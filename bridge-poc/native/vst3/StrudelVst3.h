@@ -2,9 +2,12 @@
 
 #include "SharedAudioRingBuffer.hpp"
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h>
-#include <WebView2.h>
 #include <wrl.h>
+#include <WebView2.h>
 
 #include "public.sdk/source/vst/vstsinglecomponenteffect.h"
 #include "pluginterfaces/base/smartpointer.h"
