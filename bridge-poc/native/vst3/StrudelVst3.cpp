@@ -34,20 +34,9 @@ tresult readStateBytes(IBStream *stream, void *data, int32 size) {
   return result == kResultOk && read == size ? kResultOk : kResultFalse;
 }
 
-}  // namespace
-
-tresult PLUGIN_API StrudelVst3Processor::initialize(FUnknown *context) {
-  const auto result = SingleComponentEffect::initialize(context);
-  if (result != kResultOk) {
-    return result;
-  }
-
-  addAudioOutput(STR16("Strudel Audio"), SpeakerArr::kStereo);
-  return kResultOk;
-}
-
-tresult PLUGIN_API StrudelVst3Processor::setState(IBStream *state) {
-  if (state == nullptr) {
+tresult restoreEditorCodeState(IBStream *state,
+                               StrudelVst3Processor *processor) {
+  if (state == nullptr || processor == nullptr) {
     return kInvalidArgument;
   }
 
@@ -71,16 +60,17 @@ tresult PLUGIN_API StrudelVst3Processor::setState(IBStream *state) {
           kResultOk) {
     return kResultFalse;
   }
-  setEditorCode(std::move(code));
+  processor->setEditorCode(std::move(code));
   return kResultOk;
 }
 
-tresult PLUGIN_API StrudelVst3Processor::getState(IBStream *state) {
-  if (state == nullptr) {
+tresult saveEditorCodeState(IBStream *state,
+                            const StrudelVst3Processor *processor) {
+  if (state == nullptr || processor == nullptr) {
     return kInvalidArgument;
   }
 
-  const auto code = editorCode();
+  const auto code = processor->editorCode();
   if (code.size() > kMaximumEditorCodeBytes) {
     return kResultFalse;
   }
@@ -99,6 +89,38 @@ tresult PLUGIN_API StrudelVst3Processor::getState(IBStream *state) {
              ? kResultOk
              : writeStateBytes(state, code.data(),
                                static_cast<int32>(codeBytes));
+}
+
+}  // namespace
+
+tresult PLUGIN_API StrudelVst3Processor::initialize(FUnknown *context) {
+  const auto result = SingleComponentEffect::initialize(context);
+  if (result != kResultOk) {
+    return result;
+  }
+
+  addAudioOutput(STR16("Strudel Audio"), SpeakerArr::kStereo);
+  return kResultOk;
+}
+
+tresult PLUGIN_API StrudelVst3Processor::setState(IBStream *state) {
+  return restoreEditorCodeState(state, this);
+}
+
+tresult PLUGIN_API StrudelVst3Processor::getState(IBStream *state) {
+  return saveEditorCodeState(state, this);
+}
+
+tresult PLUGIN_API StrudelVst3Processor::setComponentState(IBStream *state) {
+  return restoreEditorCodeState(state, this);
+}
+
+tresult PLUGIN_API StrudelVst3Processor::setEditorState(IBStream *state) {
+  return restoreEditorCodeState(state, this);
+}
+
+tresult PLUGIN_API StrudelVst3Processor::getEditorState(IBStream *state) {
+  return saveEditorCodeState(state, this);
 }
 
 tresult PLUGIN_API StrudelVst3Processor::setupProcessing(
@@ -202,7 +224,7 @@ BEGIN_FACTORY_DEF("Dexter U.S.",
 
 DEF_CLASS2(INLINE_UID(0xD3E7A5B1, 0x4C2A6F80, 0xAB10CD23, 0x9F775E41),
             PClassInfo::kManyInstances, kVstAudioEffectClass,
-            "Dexter U.S. Strudel", 0, "Instrument|Synth", "0.2.0",
+            "Dexter U.S. Strudel", 0, "Instrument|Synth", "0.2.1",
            kVstVersionString, StrudelVst3Processor::createInstance)
 
 END_FACTORY

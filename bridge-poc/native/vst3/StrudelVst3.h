@@ -31,8 +31,11 @@ class StrudelVst3Processor final : public SingleComponentEffect {
   }
 
   tresult PLUGIN_API initialize(FUnknown *context) SMTG_OVERRIDE;
+  tresult PLUGIN_API setComponentState(IBStream *state) SMTG_OVERRIDE;
   tresult PLUGIN_API setState(IBStream *state) SMTG_OVERRIDE;
   tresult PLUGIN_API getState(IBStream *state) SMTG_OVERRIDE;
+  tresult PLUGIN_API setEditorState(IBStream *state) SMTG_OVERRIDE;
+  tresult PLUGIN_API getEditorState(IBStream *state) SMTG_OVERRIDE;
   tresult PLUGIN_API setupProcessing(ProcessSetup &setup) SMTG_OVERRIDE;
   tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) SMTG_OVERRIDE;
   tresult PLUGIN_API process(ProcessData &data) SMTG_OVERRIDE;

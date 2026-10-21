@@ -31,10 +31,11 @@ for the renderer, allocates, or takes a UI-thread lock. The Web Audio context
 requests the silent `sinkId` so playback is intended to leave only through the
 VST3 output bus.
 
-The VST3 component saves the editor's UTF-8 Strudel code in its component state.
+The VST3 component saves the editor's UTF-8 Strudel code through both the
+processor component-state interface and the edit-controller state interface.
 CodeMirror changes are sent to the native component, and restored code is
 returned to the WebView before the editor mounts. This makes the pattern travel
-with a host-saved VST3 preset/project.
+with host-saved VST3 state, where supported by the host's bank/project save.
 
 The standard Strudel sample maps are loaded from their upstream repositories at
 startup; individual audio samples are fetched on demand. Persistent sample
