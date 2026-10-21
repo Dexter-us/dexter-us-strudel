@@ -4,13 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Dexter U.S. Strudel v0.2.8</title>
+    <title>Dexter U.S. Strudel v0.2.9</title>
   </head>
   <body>
     <header class="toolbar">
       <div class="brand">DEXTER U.S. <span>STRUDEL</span><small id="app-version"></small></div>
       <div class="bridge-status" id="bridge-status" role="status">Waiting for native bridge</div>
       <button id="drum-builder-toggle" class="secondary-button" type="button" aria-expanded="false" aria-haspopup="menu" aria-controls="drum-groove-menu">Drum Builder</button>
+      <button id="settings-toggle" class="secondary-button" type="button" aria-expanded="false" aria-controls="settings-panel">Settings</button>
       <button id="run-strudel" type="button" disabled>Run</button>
       <button id="connect-bridge" type="button">Connect audio bridge</button>
       <section id="drum-builder-panel" class="drum-builder" hidden aria-label="Drum pattern builder">
@@ -40,6 +41,79 @@
         <button type="button" role="menuitem" data-groove="rock">Rock groove</button>
         <button type="button" role="menuitem" data-groove="breakbeat">Breakbeat</button>
       </div>
+      <section id="settings-panel" class="settings-panel" hidden aria-label="Strudel settings">
+        <div class="settings-heading">
+          <div>
+            <strong>Settings</strong>
+            <p>Editor, appearance, and reusable Strudel code.</p>
+          </div>
+          <button id="settings-close" class="secondary-button" type="button" aria-label="Close settings">Close</button>
+        </div>
+        <label class="settings-field" for="setting-theme">
+          <span>Editor theme</span>
+          <select id="setting-theme">
+            <option value="strudelTheme">Strudel</option>
+            <option value="blackscreen">Blackscreen</option>
+            <option value="bluescreen">Bluescreen</option>
+            <option value="whitescreen">Whitescreen</option>
+            <option value="algoboy">Algoboy</option>
+            <option value="CutiePi">CutiePi</option>
+            <option value="sonicPink">Sonic Pink</option>
+            <option value="dracula">Dracula</option>
+            <option value="githubDark">GitHub Dark</option>
+            <option value="gruvboxDark">Gruvbox Dark</option>
+            <option value="nord">Nord</option>
+            <option value="monokai">Monokai</option>
+            <option value="tokyoNight">Tokyo Night</option>
+            <option value="vscodeDark">VS Code Dark</option>
+            <option value="xcodeLight">Xcode Light</option>
+          </select>
+        </label>
+        <label class="settings-field" for="setting-font-size">
+          <span>Editor font size <output id="setting-font-size-value">18</output></span>
+          <input id="setting-font-size" type="range" min="12" max="32" step="1" value="18" />
+        </label>
+        <div class="settings-grid" aria-label="Editor options">
+          <label><input data-editor-setting="isLineNumbersDisplayed" type="checkbox" checked /> Line numbers</label>
+          <label><input data-editor-setting="isAutoCompletionEnabled" type="checkbox" /> Autocomplete</label>
+          <label><input data-editor-setting="isPatternHighlightingEnabled" type="checkbox" checked /> Pattern highlighting</label>
+          <label><input data-editor-setting="isTooltipEnabled" type="checkbox" /> Tooltips</label>
+          <label><input data-editor-setting="isBracketMatchingEnabled" type="checkbox" /> Bracket matching</label>
+          <label><input data-editor-setting="isBracketClosingEnabled" type="checkbox" checked /> Close brackets</label>
+          <label><input data-editor-setting="isLineWrappingEnabled" type="checkbox" /> Wrap long lines</label>
+          <label><input data-editor-setting="isActiveLineHighlighted" type="checkbox" /> Highlight current line</label>
+          <label><input data-editor-setting="isTabIndentationEnabled" type="checkbox" /> Tab indentation</label>
+          <label><input data-editor-setting="isMultiCursorEnabled" type="checkbox" /> Ctrl-click cursors</label>
+        </div>
+        <label class="settings-field" for="setting-opacity">
+          <span>Window and editor opacity <output id="setting-opacity-value">100%</output></span>
+          <input id="setting-opacity" type="range" min="0" max="100" step="5" value="100" />
+        </label>
+        <p class="settings-note">
+          Lower opacity reveals the host behind the editor when WebView2 and the VST host support it.
+          Some hosts may keep the plugin window opaque.
+        </p>
+        <span id="opacity-status" class="settings-note" role="status">Native transparency has not been tested in this host.</span>
+        <section class="prebake-settings" aria-label="Portable Prebake">
+          <strong>Portable Prebake</strong>
+          <p>
+            This code loads before each Strudel evaluation. Assign helpers to
+            <code>globalThis</code> to make them available in the editor.
+            The bundled file is <code>Contents/Resources/web/prebake.strudel</code>.
+          </p>
+          <textarea id="prebake-source" spellcheck="false" aria-label="Prebake code"></textarea>
+          <input id="prebake-import-file" type="file" accept=".strudel,.js,.txt,text/plain" hidden />
+          <div class="settings-actions">
+            <button id="prebake-import" class="secondary-button" type="button">Import file</button>
+            <button id="prebake-export" class="secondary-button" type="button">Export .strudel</button>
+          </div>
+          <div class="settings-actions">
+            <button id="prebake-save" type="button">Save for next editor open</button>
+            <button id="prebake-reset" class="secondary-button" type="button">Use bundled file</button>
+          </div>
+          <span id="prebake-status" class="settings-note" role="status">Loading bundled Prebake…</span>
+        </section>
+      </section>
     </header>
     <main>
       <section class="editor-shell" aria-label="Strudel live coding editor">

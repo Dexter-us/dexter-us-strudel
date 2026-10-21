@@ -371,6 +371,7 @@ HRESULT StrudelEditorView::createController(
               self->showError(L"Could not initialize the WebView2 page.");
               return result;
             }
+            (void)self->setWindowOpacity(100);
 
             result = self->m_environment.As(&self->m_environment12);
             if (FAILED(result)) {
@@ -469,6 +470,26 @@ HRESULT StrudelEditorView::handleWebMessage(
     if (message == L"choose-sample-folder") {
       return selectSampleFolder();
     }
+    constexpr wchar_t kWindowOpacityPrefix[] = L"window-opacity:";
+    if (beginsWith(message, kWindowOpacityPrefix)) {
+      const auto prefixLength =
+          sizeof(kWindowOpacityPrefix) / sizeof(kWindowOpacityPrefix[0]) - 1;
+      wchar_t *end = nullptr;
+      const auto opacity =
+          std::wcstoul(message.c_str() + prefixLength, &end, 10);
+      const bool valid = end != message.c_str() + prefixLength &&
+                         end != nullptr && *end == L'\0' && opacity <= 100;
+      const auto opacityResult =
+          valid ? setWindowOpacity(static_cast<std::uint32_t>(opacity))
+                : E_INVALIDARG;
+      if (m_webView) {
+        m_webView->PostWebMessageAsJson(
+            SUCCEEDED(opacityResult)
+                ? L"{\"type\":\"window-opacity-status\",\"webViewAccepted\":true}"
+                : L"{\"type\":\"window-opacity-status\",\"webViewAccepted\":false}");
+      }
+      return S_OK;
+    }
     constexpr wchar_t kEditorCodePrefix[] = L"editor-code:";
     if (beginsWith(message, kEditorCodePrefix)) {
       const auto code = wideToUtf8(message.substr(
@@ -524,6 +545,24 @@ HRESULT StrudelEditorView::sendEditorCode() {
   const std::wstring message =
       std::wstring(kEditorCodePrefix) + code;
   return m_webView->PostWebMessageAsString(message.c_str());
+}
+
+HRESULT StrudelEditorView::setWindowOpacity(std::uint32_t opacity) {
+  if (!m_controller) {
+    return E_POINTER;
+  }
+  Microsoft::WRL::ComPtr<ICoreWebView2Controller2> controller2;
+  const auto queryResult = m_controller.As(&controller2);
+  if (FAILED(queryResult)) {
+    return queryResult;
+  }
+
+  COREWEBVIEW2_COLOR background{};
+  background.A = static_cast<BYTE>((opacity * 255U + 50U) / 100U);
+  background.R = 17;
+  background.G = 18;
+  background.B = 15;
+  return controller2->put_DefaultBackgroundColor(background);
 }
 
 HRESULT StrudelEditorView::mapSampleFolder(

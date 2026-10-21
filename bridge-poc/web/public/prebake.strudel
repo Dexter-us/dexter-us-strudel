@@ -1,0 +1,9 @@
+// Dexter U.S. Strudel portable Prebake
+// This file runs after Strudel's built-in functions are loaded and before
+// your editor code is evaluated. Keep helpers on globalThis to expose them.
+//
+// Example:
+// globalThis.drumTab = (pattern) => pattern._punchcard();
+//
+// Add your own Strudel helpers below. This file is included with the VST3 at:
+// Contents/Resources/web/prebake.strudel

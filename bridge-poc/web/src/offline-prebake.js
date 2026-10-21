@@ -13,6 +13,40 @@ import {
 } from "@strudel/webaudio";
 import * as core from "@strudel/core";
 
+const userPrebakeStorageKey = "dexter-us-strudel-prebake-v1";
+
+async function loadUserPrebake() {
+  try {
+    const saved = window.localStorage.getItem(userPrebakeStorageKey);
+    if (saved !== null) return saved;
+  } catch {
+    // Fall back to the bundled portable file when browser storage is disabled.
+  }
+
+  try {
+    const response = await fetch(new URL("/prebake.strudel", window.location.href), {
+      cache: "no-store",
+    });
+    if (response.ok) return await response.text();
+  } catch (error) {
+    console.warn("Could not load the bundled Prebake file", error);
+  }
+  return "";
+}
+
+function executeUserPrebake(source) {
+  globalThis.__dexterStrudelPrebakeError = "";
+  globalThis.__dexterStrudelPrebakeSource = source;
+  if (!source.trim()) return;
+  try {
+    (0, eval)(`${source}\n//# sourceURL=prebake.strudel`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    globalThis.__dexterStrudelPrebakeError = message;
+    console.error("Prebake file could not be evaluated", error);
+  }
+}
+
 export async function prebake() {
   const modulesLoading = evalScope(
     core,
@@ -31,6 +65,9 @@ export async function prebake() {
     registerSynthSounds(),
     registerZZFXSounds(),
   ]);
+
+  const userSource = await loadUserPrebake();
+  executeUserPrebake(userSource);
 }
 
 const maxPan = noteToMidi("C8");

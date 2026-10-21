@@ -15,6 +15,40 @@ const drumBuilderPanel = document.querySelector("#drum-builder-panel");
 const drumCodePreview = document.querySelector("#drum-code-preview");
 const insertDrumPatternButton = document.querySelector("#insert-drum-pattern");
 const drumGrooveMenu = document.querySelector("#drum-groove-menu");
+const settingsToggle = document.querySelector("#settings-toggle");
+const settingsPanel = document.querySelector("#settings-panel");
+const settingsClose = document.querySelector("#settings-close");
+const themeSelect = document.querySelector("#setting-theme");
+const fontSizeInput = document.querySelector("#setting-font-size");
+const fontSizeOutput = document.querySelector("#setting-font-size-value");
+const opacityInput = document.querySelector("#setting-opacity");
+const opacityOutput = document.querySelector("#setting-opacity-value");
+const opacityStatus = document.querySelector("#opacity-status");
+const prebakeSource = document.querySelector("#prebake-source");
+const prebakeImportFile = document.querySelector("#prebake-import-file");
+const prebakeStatus = document.querySelector("#prebake-status");
+const prebakeStorageKey = "dexter-us-strudel-prebake-v1";
+const opacityStorageKey = "dexter-us-strudel-window-opacity-v1";
+const defaultEditorSettings = {
+  keybindings: "codemirror",
+  isBracketMatchingEnabled: false,
+  isBracketClosingEnabled: true,
+  isLineNumbersDisplayed: true,
+  isActiveLineHighlighted: false,
+  isAutoCompletionEnabled: false,
+  isPatternHighlightingEnabled: true,
+  isFlashEnabled: true,
+  isTooltipEnabled: false,
+  isLineWrappingEnabled: false,
+  isTabIndentationEnabled: false,
+  isMultiCursorEnabled: false,
+  theme: "strudelTheme",
+  fontFamily: "monospace",
+  fontSize: 18,
+};
+const editorSettingInputs = [
+  ...document.querySelectorAll("[data-editor-setting]"),
+];
 const sampleFolderButton = document.querySelector("#sample-folder-button");
 const sampleFolderStatus = document.querySelector("#sample-folder-status");
 const sampleBankList = document.querySelector("#sample-bank-list");
@@ -98,6 +132,108 @@ function getWebViewBridge() {
   return window.chrome?.webview ?? null;
 }
 
+function readSavedOpacity() {
+  try {
+    const value = Number(window.localStorage.getItem(opacityStorageKey));
+    return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 100;
+  } catch {
+    return 100;
+  }
+}
+
+function applyWindowOpacity(value, notifyNative = true) {
+  const opacity = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+  const normalized = opacity / 100;
+  document.documentElement.style.setProperty("--window-opacity", normalized);
+  opacityInput.value = String(opacity);
+  opacityOutput.value = `${opacity}%`;
+  try {
+    window.localStorage.setItem(opacityStorageKey, String(opacity));
+  } catch {
+    // Keep the current appearance for this editor session.
+  }
+  if (notifyNative) {
+    getWebViewBridge()?.postMessage(`window-opacity:${opacity}`);
+  }
+}
+
+function getEditorSettings() {
+  if (strudelEditor?.settings) return strudelEditor.settings;
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem("codemirror-settings") ?? "{}",
+    );
+    return { ...defaultEditorSettings, ...saved };
+  } catch {
+    return { ...defaultEditorSettings };
+  }
+}
+
+function updateEditorSettings(update) {
+  const nextSettings = { ...getEditorSettings(), ...update };
+  if (strudelEditor?.editor) {
+    strudelEditor.settings = nextSettings;
+    strudelEditor.editor.updateSettings(nextSettings);
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      "codemirror-settings",
+      JSON.stringify(nextSettings),
+    );
+  } catch {
+    // The options can still be applied after the editor mounts this session.
+  }
+}
+
+function populateEditorSettings() {
+  const settings = getEditorSettings();
+  themeSelect.value = settings.theme ?? "strudelTheme";
+  fontSizeInput.value = String(settings.fontSize ?? 18);
+  fontSizeOutput.value = fontSizeInput.value;
+  for (const input of editorSettingInputs) {
+    input.checked = Boolean(settings[input.dataset.editorSetting]);
+  }
+}
+
+async function readBundledPrebake() {
+  const response = await fetch(
+    new URL("/prebake.strudel", window.location.href),
+    { cache: "no-store" },
+  );
+  if (!response.ok) {
+    throw new Error(`Bundled Prebake file returned ${response.status}`);
+  }
+  return response.text();
+}
+
+function refreshPrebakeEditor() {
+  if (typeof window.__dexterStrudelPrebakeSource === "string") {
+    prebakeSource.value = window.__dexterStrudelPrebakeSource;
+  }
+  if (window.__dexterStrudelPrebakeError) {
+    prebakeStatus.textContent =
+      `Prebake has an error: ${window.__dexterStrudelPrebakeError}`;
+  } else {
+    prebakeStatus.textContent =
+      "Loaded at startup. Edits are saved in this WebView profile; export a copy to keep them portable.";
+  }
+}
+
+function exportPrebake() {
+  const file = new Blob([prebakeSource.value], { type: "text/plain" });
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "prebake.strudel";
+  link.click();
+  URL.revokeObjectURL(url);
+  prebakeStatus.textContent =
+    "Exported prebake.strudel. Replace the bundled file to carry it with the VST3.";
+}
+
+applyWindowOpacity(readSavedOpacity(), false);
+
 async function mountStrudel() {
   if (strudelMounted) return;
   editorMount.inert = false;
@@ -130,6 +266,9 @@ async function mountStrudel() {
         "Strudel loaded, but CodeMirror did not mount. Reopen the editor and check the WebView2 Runtime.",
       );
     }
+    await editor.editor.prebaked;
+    populateEditorSettings();
+    refreshPrebakeEditor();
 
     strudelMounted = true;
     const contentDOM = editor.editor.editor?.contentDOM;
@@ -316,6 +455,86 @@ drumBuilderToggle.addEventListener("click", () => {
   drumBuilderToggle.setAttribute("aria-expanded", String(isOpen));
 });
 
+settingsToggle.addEventListener("click", () => {
+  const isOpen = settingsPanel.hidden;
+  settingsPanel.hidden = !isOpen;
+  settingsToggle.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) {
+    populateEditorSettings();
+    refreshPrebakeEditor();
+  }
+});
+
+settingsClose.addEventListener("click", () => {
+  settingsPanel.hidden = true;
+  settingsToggle.setAttribute("aria-expanded", "false");
+  settingsToggle.focus();
+});
+
+themeSelect.addEventListener("change", () => {
+  updateEditorSettings({ theme: themeSelect.value });
+});
+
+fontSizeInput.addEventListener("input", () => {
+  fontSizeOutput.value = fontSizeInput.value;
+  updateEditorSettings({ fontSize: Number(fontSizeInput.value) });
+});
+
+for (const input of editorSettingInputs) {
+  input.addEventListener("change", () => {
+    updateEditorSettings({
+      [input.dataset.editorSetting]: input.checked,
+    });
+  });
+}
+
+opacityInput.addEventListener("input", () => {
+  applyWindowOpacity(opacityInput.value);
+});
+
+document.querySelector("#prebake-import").addEventListener("click", () => {
+  prebakeImportFile.click();
+});
+
+prebakeImportFile.addEventListener("change", async () => {
+  const file = prebakeImportFile.files?.[0];
+  if (!file) return;
+  try {
+    prebakeSource.value = await file.text();
+    prebakeStatus.textContent =
+      `Imported ${file.name}. Save it for the next editor open, or export a portable copy.`;
+  } catch (error) {
+    prebakeStatus.textContent =
+      error instanceof Error ? error.message : "Could not read that file.";
+  }
+  prebakeImportFile.value = "";
+});
+
+document.querySelector("#prebake-export").addEventListener("click", exportPrebake);
+
+document.querySelector("#prebake-save").addEventListener("click", () => {
+  try {
+    window.localStorage.setItem(prebakeStorageKey, prebakeSource.value);
+    prebakeStatus.textContent =
+      "Saved in this WebView profile. Close and reopen the editor to load it; export the file to keep it portable.";
+  } catch {
+    prebakeStatus.textContent =
+      "Could not save to WebView storage. Export prebake.strudel instead.";
+  }
+});
+
+document.querySelector("#prebake-reset").addEventListener("click", async () => {
+  try {
+    window.localStorage.removeItem(prebakeStorageKey);
+    prebakeSource.value = await readBundledPrebake();
+    prebakeStatus.textContent =
+      "Using the bundled portable file on the next editor open.";
+  } catch (error) {
+    prebakeStatus.textContent =
+      error instanceof Error ? error.message : "Could not read the bundled file.";
+  }
+});
+
 function openDrumGrooveMenu(event) {
   event.preventDefault();
   drumGrooveMenu.hidden = false;
@@ -362,10 +581,23 @@ document.addEventListener("pointerdown", (event) => {
   ) {
     drumGrooveMenu.hidden = true;
   }
+  if (
+    !settingsPanel.hidden &&
+    !settingsPanel.contains(event.target) &&
+    event.target !== settingsToggle
+  ) {
+    settingsPanel.hidden = true;
+    settingsToggle.setAttribute("aria-expanded", "false");
+  }
 });
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    if (!settingsPanel.hidden) {
+      settingsPanel.hidden = true;
+      settingsToggle.setAttribute("aria-expanded", "false");
+      settingsToggle.focus();
+    }
     if (!drumBuilderPanel.hidden) {
       drumBuilderPanel.hidden = true;
       drumBuilderToggle.setAttribute("aria-expanded", "false");
@@ -536,6 +768,12 @@ connectButton.addEventListener("click", () => {
 const webview = getWebViewBridge();
 if (webview) {
   webview.addEventListener("message", (event) => {
+    if (event.data?.type === "window-opacity-status") {
+      opacityStatus.textContent = event.data.webViewAccepted
+        ? "WebView2 accepted the alpha setting; VSTHost may still composite the plugin as opaque."
+        : "WebView2 did not accept native alpha. Editor background opacity remains adjustable.";
+      return;
+    }
     if (event.data?.type === "sample-folder-index") {
       void registerLocalSampleFolder(event.data);
       return;
@@ -574,6 +812,7 @@ if (webview) {
     }
   });
   showStatus("WebView2 host detected — requesting shared audio buffer");
+  webview.postMessage(`window-opacity:${readSavedOpacity()}`);
   webview.postMessage("request-editor-code");
   webview.postMessage("request-sample-folder-index");
   webview.postMessage({ type: "request-audio-buffer" });

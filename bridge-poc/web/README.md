@@ -68,6 +68,19 @@ editor to choose a groove. Its cycle speed and level sliders generate named
 numeric constants in the Strudel code. Insert/Update replaces the editor
 contents; playback still starts only when Run is pressed.
 
+The Settings popover exposes CodeMirror editor options, theme and font size,
+plus a window/editor opacity control. Native alpha is requested through
+WebView2's controller background color, but final transparency depends on the
+VST host's composition behavior.
+
+`public/prebake.strudel` is copied into the VST3 web resources and loaded before
+the user's Strudel code. Add custom helpers by assigning them to `globalThis`,
+for example `globalThis.drumTab = (pattern) => pattern._punchcard();`. The
+Settings popover can import/export `.strudel` files and save an override in the
+WebView profile. That override is machine-local; export it and replace the
+bundled `Contents/Resources/web/prebake.strudel` file to carry the helpers with
+the portable VST3 folder.
+
 Hydra's `hydra-synth` runtime is copied from the pinned npm dependency into the
 VST3's web assets and loaded locally by Strudel. The build includes the
 Strudel AGPL and Hydra license notices under `vendor/`.
