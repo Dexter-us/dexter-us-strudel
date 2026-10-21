@@ -230,7 +230,7 @@ HRESULT StrudelEditorView::handleWebMessage(
   }
 
   LPWSTR rawJson = nullptr;
-  if (FAILED(args->TryGetWebMessageAsJson(&rawJson)) || rawJson == nullptr) {
+  if (FAILED(args->get_WebMessageAsJson(&rawJson)) || rawJson == nullptr) {
     return S_OK;
   }
   const std::wstring json(rawJson);
