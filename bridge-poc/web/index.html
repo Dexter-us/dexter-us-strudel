@@ -4,12 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Dexter U.S. Strudel v0.2.4</title>
+    <title>Dexter U.S. Strudel v0.2.5</title>
   </head>
   <body>
     <header class="toolbar">
       <div class="brand">DEXTER U.S. <span>STRUDEL</span><small id="app-version"></small></div>
       <div class="bridge-status" id="bridge-status" role="status">Waiting for native bridge</div>
+      <button id="drum-builder-toggle" class="secondary-button" type="button" aria-expanded="false">Drum Builder</button>
       <button id="run-strudel" type="button" disabled>Run</button>
       <button id="connect-bridge" type="button">Connect audio bridge</button>
     </header>
@@ -20,14 +21,38 @@
         </div>
       </section>
       <aside class="meter" aria-live="polite">
-        <strong>Bridge diagnostics</strong>
-        <span id="audio-format">No shared audio buffer</span>
-        <span id="audio-frames">0 frames received</span>
-        <p>
-          Strudel renders through its own Web Audio graph. In this test, that graph
-          is tapped into native shared memory; the VST3 processor reads the frames
-          for its output buffers.
-        </p>
+        <div id="bridge-diagnostics" class="bridge-diagnostics">
+          <strong>Bridge diagnostics</strong>
+          <span id="audio-format">No shared audio buffer</span>
+          <span id="audio-frames">0 frames received</span>
+          <p>
+            Strudel renders through its own Web Audio graph. In this test, that graph
+            is tapped into native shared memory; the VST3 processor reads the frames
+            for its output buffers.
+          </p>
+        </div>
+        <section id="drum-builder-panel" class="drum-builder" hidden aria-label="Drum pattern builder">
+          <strong>Drum Builder</strong>
+          <p>Adjust the levels, then insert the generated Strudel code.</p>
+          <label class="slider-control" for="cycle-speed">
+            <span>Cycle speed (cps) <output id="cycle-speed-value">0.75</output></span>
+            <input id="cycle-speed" type="range" min="0.25" max="1.5" step="0.05" value="0.75" />
+          </label>
+          <label class="slider-control" for="kick-level">
+            <span>Kick level <output id="kick-level-value">0.95</output></span>
+            <input id="kick-level" type="range" min="0" max="1" step="0.05" value="0.95" />
+          </label>
+          <label class="slider-control" for="snare-level">
+            <span>Snare level <output id="snare-level-value">0.80</output></span>
+            <input id="snare-level" type="range" min="0" max="1" step="0.05" value="0.80" />
+          </label>
+          <label class="slider-control" for="hat-level">
+            <span>Hi-hat level <output id="hat-level-value">0.35</output></span>
+            <input id="hat-level" type="range" min="0" max="1" step="0.05" value="0.35" />
+          </label>
+          <pre id="drum-code-preview" class="drum-code-preview"></pre>
+          <button id="insert-drum-pattern" type="button">Insert / update editor</button>
+        </section>
       </aside>
     </main>
     <script type="module" src="/src/main.js"></script>

@@ -9,10 +9,20 @@ import "./style.css";
 const status = document.querySelector("#bridge-status");
 const connectButton = document.querySelector("#connect-bridge");
 const runButton = document.querySelector("#run-strudel");
+const drumBuilderToggle = document.querySelector("#drum-builder-toggle");
+const drumBuilderPanel = document.querySelector("#drum-builder-panel");
+const drumCodePreview = document.querySelector("#drum-code-preview");
+const insertDrumPatternButton = document.querySelector("#insert-drum-pattern");
 const audioFormat = document.querySelector("#audio-format");
 const audioFrames = document.querySelector("#audio-frames");
 const editorMount = document.querySelector("#editor-mount");
 const versionLabel = document.querySelector("#app-version");
+const drumControls = [
+  ["cycleSpeed", document.querySelector("#cycle-speed"), document.querySelector("#cycle-speed-value")],
+  ["kickLevel", document.querySelector("#kick-level"), document.querySelector("#kick-level-value")],
+  ["snareLevel", document.querySelector("#snare-level"), document.querySelector("#snare-level-value")],
+  ["hatLevel", document.querySelector("#hat-level"), document.querySelector("#hat-level-value")],
+];
 
 let bridgeNode = null;
 let lastWriteFrame = 0;
@@ -117,11 +127,66 @@ async function mountStrudel() {
 function persistEditorCode() {
   const code = strudelEditor?.editor?.code;
   if (typeof code !== "string") return;
+  saveEditorCode(code);
+}
+
+function saveEditorCode(code) {
   userChangedEditor = true;
   initialEditorCode = code;
   writeLocalEditorCode(code);
   getWebViewBridge()?.postMessage(`editor-code:${code}`);
 }
+
+function generateDrumCode() {
+  const values = Object.fromEntries(
+    drumControls.map(([name, input]) => [
+      name,
+      Number(input.value).toFixed(2),
+    ]),
+  );
+  return `const cycleSpeed = ${values.cycleSpeed}
+const kickLevel = ${values.kickLevel}
+const snareLevel = ${values.snareLevel}
+const hatLevel = ${values.hatLevel}
+
+setcps(cycleSpeed)
+
+stack(
+  s("bd ~ bd ~").gain(kickLevel),
+  s("~ sd ~ sd").gain(snareLevel),
+  s("hh*8").gain(hatLevel)
+)`;
+}
+
+function updateDrumBuilder() {
+  for (const [, input, output] of drumControls) {
+    output.value = Number(input.value).toFixed(2);
+  }
+  drumCodePreview.textContent = generateDrumCode();
+}
+
+drumBuilderToggle.addEventListener("click", () => {
+  const isOpen = drumBuilderPanel.hidden;
+  drumBuilderPanel.hidden = !isOpen;
+  drumBuilderToggle.setAttribute("aria-expanded", String(isOpen));
+});
+
+for (const [, input] of drumControls) {
+  input.addEventListener("input", updateDrumBuilder);
+}
+
+insertDrumPatternButton.addEventListener("click", () => {
+  if (!strudelEditor || !strudelMounted) {
+    showStatus("Connect the audio bridge before inserting a pattern", true);
+    return;
+  }
+  const code = generateDrumCode();
+  strudelEditor.setAttribute("code", code);
+  saveEditorCode(code);
+  showStatus("Drum code inserted — press Run to play it");
+});
+
+updateDrumBuilder();
 
 runButton.addEventListener("click", async () => {
   const mirror = strudelEditor?.editor;
