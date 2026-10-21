@@ -69,9 +69,10 @@ numeric constants in the Strudel code. Insert/Update replaces the editor
 contents; playback still starts only when Run is pressed.
 
 The Settings popover exposes CodeMirror editor options, theme and font size,
-plus a window/editor opacity control. Native alpha is requested through
-WebView2's controller background color, but final transparency depends on the
-VST host's composition behavior.
+plus a solid/transparent WebView background switch. It uses only fully opaque
+or fully clear backgrounds; it does not apply fractional alpha to the rendered
+editor or side panels. Whether the host shows through a transparent WebView
+background depends on the VST host's composition behavior.
 
 `public/prebake.strudel` is copied into the VST3 web resources and loaded before
 the user's Strudel code. Add custom helpers by assigning them to `globalThis`,

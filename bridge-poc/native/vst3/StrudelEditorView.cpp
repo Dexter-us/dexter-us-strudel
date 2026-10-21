@@ -371,7 +371,7 @@ HRESULT StrudelEditorView::createController(
               self->showError(L"Could not initialize the WebView2 page.");
               return result;
             }
-            (void)self->setWindowOpacity(100);
+            (void)self->setWebViewBackgroundAlpha(255);
 
             result = self->m_environment.As(&self->m_environment12);
             if (FAILED(result)) {
@@ -470,23 +470,26 @@ HRESULT StrudelEditorView::handleWebMessage(
     if (message == L"choose-sample-folder") {
       return selectSampleFolder();
     }
-    constexpr wchar_t kWindowOpacityPrefix[] = L"window-opacity:";
-    if (beginsWith(message, kWindowOpacityPrefix)) {
-      const auto prefixLength =
-          sizeof(kWindowOpacityPrefix) / sizeof(kWindowOpacityPrefix[0]) - 1;
+    constexpr wchar_t kWebViewBackgroundAlphaPrefix[] =
+        L"webview-background-alpha:";
+    if (beginsWith(message, kWebViewBackgroundAlphaPrefix)) {
+      const auto prefixLength = sizeof(kWebViewBackgroundAlphaPrefix) /
+                                    sizeof(kWebViewBackgroundAlphaPrefix[0]) -
+                                1;
       wchar_t *end = nullptr;
-      const auto opacity =
+      const auto alpha =
           std::wcstoul(message.c_str() + prefixLength, &end, 10);
       const bool valid = end != message.c_str() + prefixLength &&
-                         end != nullptr && *end == L'\0' && opacity <= 100;
-      const auto opacityResult =
-          valid ? setWindowOpacity(static_cast<std::uint32_t>(opacity))
+                         end != nullptr && *end == L'\0' &&
+                         (alpha == 0 || alpha == 255);
+      const auto alphaResult =
+          valid ? setWebViewBackgroundAlpha(static_cast<BYTE>(alpha))
                 : E_INVALIDARG;
       if (m_webView) {
         m_webView->PostWebMessageAsJson(
-            SUCCEEDED(opacityResult)
-                ? L"{\"type\":\"window-opacity-status\",\"webViewAccepted\":true}"
-                : L"{\"type\":\"window-opacity-status\",\"webViewAccepted\":false}");
+            SUCCEEDED(alphaResult)
+                ? L"{\"type\":\"webview-background-alpha-status\",\"webViewAccepted\":true}"
+                : L"{\"type\":\"webview-background-alpha-status\",\"webViewAccepted\":false}");
       }
       return S_OK;
     }
@@ -547,7 +550,7 @@ HRESULT StrudelEditorView::sendEditorCode() {
   return m_webView->PostWebMessageAsString(message.c_str());
 }
 
-HRESULT StrudelEditorView::setWindowOpacity(std::uint32_t opacity) {
+HRESULT StrudelEditorView::setWebViewBackgroundAlpha(BYTE alpha) {
   if (!m_controller) {
     return E_POINTER;
   }
@@ -558,7 +561,7 @@ HRESULT StrudelEditorView::setWindowOpacity(std::uint32_t opacity) {
   }
 
   COREWEBVIEW2_COLOR background{};
-  background.A = static_cast<BYTE>((opacity * 255U + 50U) / 100U);
+  background.A = alpha;
   background.R = 17;
   background.G = 18;
   background.B = 15;

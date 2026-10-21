@@ -35,7 +35,7 @@ class StrudelEditorView final : public CPluginView {
   HRESULT handleWebMessage(ICoreWebView2WebMessageReceivedEventArgs *args);
   HRESULT provideAudioBuffer();
   HRESULT sendEditorCode();
-  HRESULT setWindowOpacity(std::uint32_t opacity);
+  HRESULT setWebViewBackgroundAlpha(BYTE alpha);
   HRESULT selectSampleFolder();
   HRESULT sendSampleFolderIndex();
   HRESULT mapSampleFolder(const std::filesystem::path &folder);

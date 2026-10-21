@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Dexter U.S. Strudel v0.2.9</title>
+    <title>Dexter U.S. Strudel v0.2.10</title>
   </head>
   <body>
     <header class="toolbar">
@@ -85,15 +85,18 @@
           <label><input data-editor-setting="isTabIndentationEnabled" type="checkbox" /> Tab indentation</label>
           <label><input data-editor-setting="isMultiCursorEnabled" type="checkbox" /> Ctrl-click cursors</label>
         </div>
-        <label class="settings-field" for="setting-opacity">
-          <span>Window and editor opacity <output id="setting-opacity-value">100%</output></span>
-          <input id="setting-opacity" type="range" min="0" max="100" step="5" value="100" />
+        <label class="settings-field" for="setting-editor-background">
+          <span>Editor background</span>
+          <select id="setting-editor-background">
+            <option value="solid">Solid</option>
+            <option value="transparent">Transparent</option>
+          </select>
         </label>
         <p class="settings-note">
-          Lower opacity reveals the host behind the editor when WebView2 and the VST host support it.
-          Some hosts may keep the plugin window opaque.
+          Transparent clears the WebView background without fading text or controls.
+          VSTHost may still composite the plugin as opaque.
         </p>
-        <span id="opacity-status" class="settings-note" role="status">Native transparency has not been tested in this host.</span>
+        <span id="transparency-status" class="settings-note" role="status">Native transparency has not been tested in this host.</span>
         <section class="prebake-settings" aria-label="Portable Prebake">
           <strong>Portable Prebake</strong>
           <p>

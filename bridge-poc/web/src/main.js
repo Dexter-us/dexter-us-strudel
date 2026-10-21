@@ -21,14 +21,13 @@ const settingsClose = document.querySelector("#settings-close");
 const themeSelect = document.querySelector("#setting-theme");
 const fontSizeInput = document.querySelector("#setting-font-size");
 const fontSizeOutput = document.querySelector("#setting-font-size-value");
-const opacityInput = document.querySelector("#setting-opacity");
-const opacityOutput = document.querySelector("#setting-opacity-value");
-const opacityStatus = document.querySelector("#opacity-status");
+const editorBackgroundSelect = document.querySelector("#setting-editor-background");
+const transparencyStatus = document.querySelector("#transparency-status");
 const prebakeSource = document.querySelector("#prebake-source");
 const prebakeImportFile = document.querySelector("#prebake-import-file");
 const prebakeStatus = document.querySelector("#prebake-status");
 const prebakeStorageKey = "dexter-us-strudel-prebake-v1";
-const opacityStorageKey = "dexter-us-strudel-window-opacity-v1";
+const editorBackgroundStorageKey = "dexter-us-strudel-editor-background-v1";
 const defaultEditorSettings = {
   keybindings: "codemirror",
   isBracketMatchingEnabled: false,
@@ -132,28 +131,31 @@ function getWebViewBridge() {
   return window.chrome?.webview ?? null;
 }
 
-function readSavedOpacity() {
+function readSavedEditorBackground() {
   try {
-    const value = Number(window.localStorage.getItem(opacityStorageKey));
-    return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 100;
+    return window.localStorage.getItem(editorBackgroundStorageKey) === "transparent"
+      ? "transparent"
+      : "solid";
   } catch {
-    return 100;
+    return "solid";
   }
 }
 
-function applyWindowOpacity(value, notifyNative = true) {
-  const opacity = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-  const normalized = opacity / 100;
-  document.documentElement.style.setProperty("--window-opacity", normalized);
-  opacityInput.value = String(opacity);
-  opacityOutput.value = `${opacity}%`;
+function applyEditorBackground(value, notifyNative = true) {
+  const mode = value === "transparent" ? "transparent" : "solid";
+  document.documentElement.classList.toggle(
+    "transparent-editor",
+    mode === "transparent",
+  );
+  editorBackgroundSelect.value = mode;
   try {
-    window.localStorage.setItem(opacityStorageKey, String(opacity));
+    window.localStorage.setItem(editorBackgroundStorageKey, mode);
   } catch {
     // Keep the current appearance for this editor session.
   }
   if (notifyNative) {
-    getWebViewBridge()?.postMessage(`window-opacity:${opacity}`);
+    const alpha = mode === "transparent" ? 0 : 255;
+    getWebViewBridge()?.postMessage(`webview-background-alpha:${alpha}`);
   }
 }
 
@@ -232,7 +234,7 @@ function exportPrebake() {
     "Exported prebake.strudel. Replace the bundled file to carry it with the VST3.";
 }
 
-applyWindowOpacity(readSavedOpacity(), false);
+applyEditorBackground(readSavedEditorBackground(), false);
 
 async function mountStrudel() {
   if (strudelMounted) return;
@@ -488,8 +490,8 @@ for (const input of editorSettingInputs) {
   });
 }
 
-opacityInput.addEventListener("input", () => {
-  applyWindowOpacity(opacityInput.value);
+editorBackgroundSelect.addEventListener("change", () => {
+  applyEditorBackground(editorBackgroundSelect.value);
 });
 
 document.querySelector("#prebake-import").addEventListener("click", () => {
@@ -768,10 +770,10 @@ connectButton.addEventListener("click", () => {
 const webview = getWebViewBridge();
 if (webview) {
   webview.addEventListener("message", (event) => {
-    if (event.data?.type === "window-opacity-status") {
-      opacityStatus.textContent = event.data.webViewAccepted
-        ? "WebView2 accepted the alpha setting; VSTHost may still composite the plugin as opaque."
-        : "WebView2 did not accept native alpha. Editor background opacity remains adjustable.";
+    if (event.data?.type === "webview-background-alpha-status") {
+      transparencyStatus.textContent = event.data.webViewAccepted
+        ? "WebView2 accepted the background mode; VSTHost may still composite the plugin as opaque."
+        : "WebView2 rejected the background mode. The solid setting remains available.";
       return;
     }
     if (event.data?.type === "sample-folder-index") {
@@ -812,7 +814,9 @@ if (webview) {
     }
   });
   showStatus("WebView2 host detected — requesting shared audio buffer");
-  webview.postMessage(`window-opacity:${readSavedOpacity()}`);
+  const backgroundAlpha =
+    readSavedEditorBackground() === "transparent" ? 0 : 255;
+  webview.postMessage(`webview-background-alpha:${backgroundAlpha}`);
   webview.postMessage("request-editor-code");
   webview.postMessage("request-sample-folder-index");
   webview.postMessage({ type: "request-audio-buffer" });

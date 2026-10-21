@@ -1,10 +1,13 @@
 :root {
-  --window-opacity: 1;
   color: #f2eee8;
-  background: transparent;
+  background: #11120f;
   font-family: Inter, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+html.transparent-editor {
+  background: transparent;
 }
 
 * {
@@ -15,11 +18,11 @@ body {
   margin: 0;
   min-width: 680px;
   min-height: 100vh;
-  background: radial-gradient(
-    circle at 18% 0%,
-    rgb(37 40 32 / calc(var(--window-opacity) * 0.9)) 0,
-    rgb(17 18 15 / var(--window-opacity)) 46rem
-  );
+  background: radial-gradient(circle at 18% 0%, #252820 0, #11120f 46rem);
+}
+
+html.transparent-editor body {
+  background: transparent;
 }
 
 .toolbar {
@@ -92,11 +95,13 @@ main {
 }
 
 .editor-shell {
+  background: transparent;
   min-height: 0;
   overflow: auto;
 }
 
 #editor-mount {
+  background: transparent;
   height: 100%;
   min-height: 0;
 }
@@ -134,7 +139,7 @@ strudel-editor + div .cm-editor {
 
 .meter {
   align-content: start;
-  background: rgb(25 27 22 / calc(var(--window-opacity) * 0.78));
+  background: #191b16;
   border-left: 1px solid #34372f;
   color: #abb09e;
   display: grid;
@@ -192,7 +197,7 @@ strudel-editor + div .cm-editor {
 }
 
 .drum-builder {
-  background: rgb(26 28 23 / calc(var(--window-opacity) * 0.98));
+  background: #1a1c17;
   border: 1px solid #4b5040;
   border-radius: 0.6rem;
   box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 55%);
@@ -212,7 +217,7 @@ strudel-editor + div .cm-editor {
 }
 
 .context-menu {
-  background: rgb(26 28 23 / calc(var(--window-opacity) * 0.98));
+  background: #1a1c17;
   border: 1px solid #4b5040;
   border-radius: 0.45rem;
   box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 55%);
@@ -241,7 +246,7 @@ strudel-editor + div .cm-editor {
 }
 
 .settings-panel {
-  background: rgb(20 22 18 / 96%);
+  background: #141612;
   border: 1px solid #4b5040;
   border-radius: 0.65rem;
   box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 65%);
@@ -366,7 +371,7 @@ strudel-editor + div .cm-editor {
 }
 
 .cm-gutters {
-  background: rgb(17 18 15 / var(--window-opacity)) !important;
+  background: transparent !important;
 }
 
 .drum-builder p {
