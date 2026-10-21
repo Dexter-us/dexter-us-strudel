@@ -11,8 +11,30 @@
 
 #include <cmath>
 #include <cstring>
+#include <string>
+#include <utility>
 
 namespace Steinberg::Vst {
+namespace {
+
+constexpr char kStateMagic[4] = {'D', 'U', 'S', 'C'};
+constexpr std::uint32_t kStateVersion = 1;
+constexpr std::uint32_t kMaximumEditorCodeBytes = 4 * 1024 * 1024;
+
+tresult writeStateBytes(IBStream *stream, const void *data, int32 size) {
+  int32 written = 0;
+  const auto result =
+      stream->write(const_cast<void *>(data), size, &written);
+  return result == kResultOk && written == size ? kResultOk : kResultFalse;
+}
+
+tresult readStateBytes(IBStream *stream, void *data, int32 size) {
+  int32 read = 0;
+  const auto result = stream->read(data, size, &read);
+  return result == kResultOk && read == size ? kResultOk : kResultFalse;
+}
+
+}  // namespace
 
 tresult PLUGIN_API StrudelVst3Processor::initialize(FUnknown *context) {
   const auto result = SingleComponentEffect::initialize(context);
@@ -22,6 +44,61 @@ tresult PLUGIN_API StrudelVst3Processor::initialize(FUnknown *context) {
 
   addAudioOutput(STR16("Strudel Audio"), SpeakerArr::kStereo);
   return kResultOk;
+}
+
+tresult PLUGIN_API StrudelVst3Processor::setState(IBStream *state) {
+  if (state == nullptr) {
+    return kInvalidArgument;
+  }
+
+  char magic[sizeof(kStateMagic)]{};
+  std::uint32_t version = 0;
+  std::uint32_t codeBytes = 0;
+  if (readStateBytes(state, magic, static_cast<int32>(sizeof(magic))) !=
+          kResultOk ||
+      readStateBytes(state, &version,
+                     static_cast<int32>(sizeof(version))) != kResultOk ||
+      readStateBytes(state, &codeBytes,
+                     static_cast<int32>(sizeof(codeBytes))) != kResultOk ||
+      std::memcmp(magic, kStateMagic, sizeof(kStateMagic)) != 0 ||
+      version != kStateVersion || codeBytes > kMaximumEditorCodeBytes) {
+    return kResultFalse;
+  }
+
+  std::string code(codeBytes, '\0');
+  if (codeBytes > 0 &&
+      readStateBytes(state, code.data(), static_cast<int32>(codeBytes)) !=
+          kResultOk) {
+    return kResultFalse;
+  }
+  setEditorCode(std::move(code));
+  return kResultOk;
+}
+
+tresult PLUGIN_API StrudelVst3Processor::getState(IBStream *state) {
+  if (state == nullptr) {
+    return kInvalidArgument;
+  }
+
+  const auto code = editorCode();
+  if (code.size() > kMaximumEditorCodeBytes) {
+    return kResultFalse;
+  }
+
+  const auto codeBytes = static_cast<std::uint32_t>(code.size());
+  if (writeStateBytes(state, kStateMagic,
+                      static_cast<int32>(sizeof(kStateMagic))) != kResultOk ||
+      writeStateBytes(state, &kStateVersion,
+                      static_cast<int32>(sizeof(kStateVersion))) !=
+          kResultOk ||
+      writeStateBytes(state, &codeBytes,
+                      static_cast<int32>(sizeof(codeBytes))) != kResultOk) {
+    return kResultFalse;
+  }
+  return codeBytes == 0
+             ? kResultOk
+             : writeStateBytes(state, code.data(),
+                               static_cast<int32>(codeBytes));
 }
 
 tresult PLUGIN_API StrudelVst3Processor::setupProcessing(
@@ -37,6 +114,16 @@ tresult PLUGIN_API StrudelVst3Processor::setupProcessing(
                        std::memory_order_release);
   }
   return kResultOk;
+}
+
+void StrudelVst3Processor::setEditorCode(std::string code) {
+  std::lock_guard<std::mutex> lock(m_editorCodeMutex);
+  m_editorCode = std::move(code);
+}
+
+std::string StrudelVst3Processor::editorCode() const {
+  std::lock_guard<std::mutex> lock(m_editorCodeMutex);
+  return m_editorCode;
 }
 
 tresult PLUGIN_API StrudelVst3Processor::canProcessSampleSize(
@@ -114,8 +201,8 @@ BEGIN_FACTORY_DEF("Dexter U.S.",
                   "https://github.com/Dexter-us/dexter-us-strudel", "")
 
 DEF_CLASS2(INLINE_UID(0xD3E7A5B1, 0x4C2A6F80, 0xAB10CD23, 0x9F775E41),
-           PClassInfo::kManyInstances, kVstAudioEffectClass,
-           "Dexter U.S. Strudel", 0, "Instrument|Synth", "0.1.1",
+            PClassInfo::kManyInstances, kVstAudioEffectClass,
+            "Dexter U.S. Strudel", 0, "Instrument|Synth", "0.2.0",
            kVstVersionString, StrudelVst3Processor::createInstance)
 
 END_FACTORY

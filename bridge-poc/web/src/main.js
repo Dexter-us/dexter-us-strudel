@@ -19,6 +19,12 @@ let lastWriteFrame = 0;
 let strudelMounted = false;
 let strudelEditor = null;
 let strudelRunning = false;
+let initialEditorCode = null;
+let resolveInitialEditorCode;
+let saveCodeTimer = 0;
+const initialEditorCodeReady = new Promise((resolve) => {
+  resolveInitialEditorCode = resolve;
+});
 
 versionLabel.textContent = `v${appVersion}`;
 
@@ -38,6 +44,12 @@ function getWebViewBridge() {
 
 async function mountStrudel() {
   if (strudelMounted) return;
+  if (initialEditorCode === null) {
+    await Promise.race([
+      initialEditorCodeReady,
+      new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
+  }
   editorMount.inert = false;
   editorMount.replaceChildren();
   const loading = document.createElement("div");
@@ -52,7 +64,7 @@ async function mountStrudel() {
     }
 
     const editor = document.createElement("strudel-editor");
-    editor.setAttribute("code", starterCode);
+    editor.setAttribute("code", initialEditorCode ?? starterCode);
     editorMount.replaceChildren(editor);
     strudelEditor = editor;
 
@@ -67,6 +79,7 @@ async function mountStrudel() {
     }
 
     strudelMounted = true;
+    editorMount.addEventListener("input", persistEditorCode);
     runButton.disabled = false;
     showStatus("Editor ready — press Run to start the pattern");
   } catch (error) {
@@ -79,6 +92,16 @@ async function mountStrudel() {
     showStatus("Strudel editor failed to start", true);
     console.error("Strudel editor startup failed", error);
   }
+}
+
+function persistEditorCode() {
+  clearTimeout(saveCodeTimer);
+  saveCodeTimer = window.setTimeout(() => {
+    const code = strudelEditor?.editor?.code;
+    if (typeof code === "string") {
+      getWebViewBridge()?.postMessage(`editor-code:${code}`);
+    }
+  }, 100);
 }
 
 runButton.addEventListener("click", async () => {
@@ -211,6 +234,16 @@ connectButton.addEventListener("click", () => {
 
 const webview = getWebViewBridge();
 if (webview) {
+  webview.addEventListener("message", (event) => {
+    if (
+      typeof event.data === "string" &&
+      event.data.startsWith("editor-code-state:")
+    ) {
+      initialEditorCode = event.data.slice("editor-code-state:".length);
+      resolveInitialEditorCode?.();
+      return;
+    }
+  });
   webview.addEventListener("sharedbufferreceived", async (event) => {
     try {
       await installAudioCapture(event.getBuffer(), event.additionalData ?? {});
@@ -220,6 +253,7 @@ if (webview) {
     }
   });
   showStatus("WebView2 host detected — requesting shared audio buffer");
+  webview.postMessage("request-editor-code");
   webview.postMessage({ type: "request-audio-buffer" });
 } else {
   showStatus("Browser preview only — native audio bridge unavailable");

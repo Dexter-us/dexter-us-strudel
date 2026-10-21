@@ -65,6 +65,45 @@ bool beginsWith(const std::wstring &text, const wchar_t *prefix) {
   return text.rfind(prefix, 0) == 0;
 }
 
+std::string wideToUtf8(const std::wstring &text) {
+  if (text.empty()) {
+    return {};
+  }
+  const int byteCount =
+      WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(),
+                          static_cast<int>(text.size()), nullptr, 0, nullptr,
+                          nullptr);
+  if (byteCount <= 0) {
+    return {};
+  }
+  std::string result(static_cast<std::size_t>(byteCount), '\0');
+  if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(),
+                          static_cast<int>(text.size()), result.data(),
+                          byteCount, nullptr, nullptr) != byteCount) {
+    return {};
+  }
+  return result;
+}
+
+std::wstring utf8ToWide(const std::string &text) {
+  if (text.empty()) {
+    return {};
+  }
+  const int characterCount =
+      MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
+                          static_cast<int>(text.size()), nullptr, 0);
+  if (characterCount <= 0) {
+    return {};
+  }
+  std::wstring result(static_cast<std::size_t>(characterCount), L'\0');
+  if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
+                          static_cast<int>(text.size()), result.data(),
+                          characterCount) != characterCount) {
+    return {};
+  }
+  return result;
+}
+
 }  // namespace
 
 StrudelEditorView::StrudelEditorView(StrudelVst3Processor *processor)
@@ -229,6 +268,27 @@ HRESULT StrudelEditorView::handleWebMessage(
     return S_OK;
   }
 
+  LPWSTR rawString = nullptr;
+  if (SUCCEEDED(args->TryGetWebMessageAsString(&rawString)) &&
+      rawString != nullptr) {
+    const std::wstring message(rawString);
+    CoTaskMemFree(rawString);
+    if (message == L"request-editor-code") {
+      return sendEditorCode();
+    }
+    constexpr wchar_t kEditorCodePrefix[] = L"editor-code:";
+    if (beginsWith(message, kEditorCodePrefix)) {
+      const auto code = wideToUtf8(message.substr(
+          sizeof(kEditorCodePrefix) / sizeof(kEditorCodePrefix[0]) - 1));
+      if (code.size() <= 4 * 1024 * 1024) {
+        m_processor->setEditorCode(code);
+      }
+      return S_OK;
+    }
+  } else if (rawString != nullptr) {
+    CoTaskMemFree(rawString);
+  }
+
   LPWSTR rawJson = nullptr;
   if (FAILED(args->get_WebMessageAsJson(&rawJson)) || rawJson == nullptr) {
     return S_OK;
@@ -260,6 +320,17 @@ HRESULT StrudelEditorView::handleWebMessage(
     }
   }
   return S_OK;
+}
+
+HRESULT StrudelEditorView::sendEditorCode() {
+  if (!m_webView) {
+    return E_POINTER;
+  }
+  constexpr wchar_t kEditorCodePrefix[] = L"editor-code-state:";
+  const auto code = utf8ToWide(m_processor->editorCode());
+  const std::wstring message =
+      std::wstring(kEditorCodePrefix) + code;
+  return m_webView->PostWebMessageAsString(message.c_str());
 }
 
 HRESULT StrudelEditorView::provideAudioBuffer() {

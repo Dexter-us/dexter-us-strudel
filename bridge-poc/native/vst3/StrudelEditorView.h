@@ -33,6 +33,7 @@ class StrudelEditorView final : public CPluginView {
   HRESULT createController(ICoreWebView2Environment *environment);
   HRESULT handleWebMessage(ICoreWebView2WebMessageReceivedEventArgs *args);
   HRESULT provideAudioBuffer();
+  HRESULT sendEditorCode();
   void updateBounds();
   void showError(const wchar_t *message) const;
   void closeWebView() noexcept;
