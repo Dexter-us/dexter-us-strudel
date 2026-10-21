@@ -60,7 +60,8 @@ smtg_add_vst3plugin(DexterUSStrudel
   StrudelVst3.cpp
   StrudelEditorView.cpp
   StrudelVst3.h
-  StrudelEditorView.h)
+  StrudelEditorView.h
+  "${VST3_SDK_DIR}/public.sdk/source/vst/vstsinglecomponenteffect.cpp")
 
 target_compile_features(DexterUSStrudel PRIVATE cxx_std_17)
 target_compile_definitions(DexterUSStrudel PRIVATE
