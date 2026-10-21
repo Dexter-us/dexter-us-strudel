@@ -50,12 +50,34 @@ DexterUSStrudel.vst3/
 ```
 
 The plugin auto-discovers `Samples`, `samples`, or `uzu-drumkit-main` beside
-`Contents`. Choose Sample Folder can also select another folder. If that folder
-is inside the VST3 bundle, its relative path is saved beside `Contents`, so
-moving the whole folder keeps the library attached. An external folder works
-only for the current session; move it into the bundle for a portable setup.
+`Contents`, and also `UserData/Samples`. Choose Sample Folder can also select
+another folder. If that folder is inside the VST3 bundle, its relative path is
+saved beside `Contents`, so moving the whole folder keeps the library attached.
+An external folder works only for the current session; move it into the bundle
+for a portable setup.
 The plugin indexes up to 10,000 WAV, AIFF, MP3, OGG, M4A, AAC, or FLAC files.
 It does not copy sample audio into the VST3 or WebView profile.
+
+On first editor open, the plugin creates a portable user-data layout beside
+`Contents` when the VST3 folder is writable:
+
+```text
+DexterUSStrudel.vst3/
+├── Contents/
+└── UserData/
+    ├── Exports/
+    ├── Prebake/
+    │   └── prebake.strudel
+    ├── Presets/
+    └── Samples/
+```
+
+The Settings popover can open this folder and save the active Prebake directly
+to `UserData/Prebake/prebake.strudel`; no browser download is needed. That
+portable Prebake is loaded before the bundled default on the next editor open.
+The `UserData/Samples` folder is auto-discovered for sample libraries. If the
+VST3 is installed in a protected, unwritable location, the plugin reports and
+uses a per-user `%LOCALAPPDATA%` fallback instead.
 
 Sample banks are exposed as IDs such as `local_uzu_drumkit_main_bd`; use them
 with Strudel's normal `s("...")` pattern syntax. The Drum Builder automatically
@@ -80,10 +102,8 @@ host's composition behavior.
 `public/prebake.strudel` is copied into the VST3 web resources and loaded before
 the user's Strudel code. Add custom helpers by assigning them to `globalThis`,
 for example `globalThis.drumTab = (pattern) => pattern._punchcard();`. The
-Settings popover can import/export `.strudel` files and save an override in the
-WebView profile. That override is machine-local; export it and replace the
-bundled `Contents/Resources/web/prebake.strudel` file to carry the helpers with
-the portable VST3 folder.
+Settings popover can import `.strudel` files and save an override to the
+portable `UserData/Prebake` folder.
 
 Hydra's `hydra-synth` runtime is copied from the pinned npm dependency into the
 VST3's web assets and loaded locally by Strudel. The build includes the

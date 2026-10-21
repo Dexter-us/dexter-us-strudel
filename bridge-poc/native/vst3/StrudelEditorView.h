@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <string>
 
 namespace Steinberg::Vst {
 
@@ -36,6 +37,11 @@ class StrudelEditorView final : public CPluginView {
   HRESULT provideAudioBuffer();
   HRESULT sendEditorCode();
   HRESULT setWebViewBackgroundAlpha(BYTE alpha);
+  HRESULT sendPortableDataInfo();
+  HRESULT sendPortablePrebake();
+  HRESULT savePortablePrebake(const std::string &source);
+  HRESULT resetPortablePrebake();
+  HRESULT openPortableDataFolder();
   HRESULT selectSampleFolder();
   HRESULT sendSampleFolderIndex();
   HRESULT mapSampleFolder(const std::filesystem::path &folder);
@@ -52,8 +58,10 @@ class StrudelEditorView final : public CPluginView {
   Microsoft::WRL::ComPtr<ICoreWebView2SharedBuffer> m_sharedBuffer;
   dexter::strudel::bridge::SharedAudioRingBufferReader *m_reader{nullptr};
   std::filesystem::path m_sampleFolderPath;
+  std::filesystem::path m_userDataPath;
   bool m_sampleFolderPortable{false};
   bool m_sampleFolderRemembered{false};
+  bool m_userDataPortable{false};
   EventRegistrationToken m_messageToken{};
   std::atomic<bool> m_closing{false};
 };

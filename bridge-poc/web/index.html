@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Dexter U.S. Strudel v0.2.11</title>
+    <title>Dexter U.S. Strudel v0.2.12</title>
   </head>
   <body>
     <header class="toolbar">
@@ -125,18 +125,19 @@ O: ----|----|----|---x</textarea>
           <p>
             This code loads before each Strudel evaluation. Assign helpers to
             <code>globalThis</code> to make them available in the editor.
-            The bundled file is <code>Contents/Resources/web/prebake.strudel</code>.
+            Save it beside the VST3 so it travels with a portable copy.
           </p>
           <textarea id="prebake-source" spellcheck="false" aria-label="Prebake code"></textarea>
           <input id="prebake-import-file" type="file" accept=".strudel,.js,.txt,text/plain" hidden />
           <div class="settings-actions">
             <button id="prebake-import" class="secondary-button" type="button">Import file</button>
-            <button id="prebake-export" class="secondary-button" type="button">Export .strudel</button>
+            <button id="prebake-save" type="button">Save to portable folder</button>
           </div>
           <div class="settings-actions">
-            <button id="prebake-save" type="button">Save for next editor open</button>
+            <button id="portable-data-open" class="secondary-button" type="button">Open data folder</button>
             <button id="prebake-reset" class="secondary-button" type="button">Use bundled file</button>
           </div>
+          <span id="portable-data-status" class="settings-note" role="status">Locating portable data folder…</span>
           <span id="prebake-status" class="settings-note" role="status">Loading bundled Prebake…</span>
         </section>
       </section>

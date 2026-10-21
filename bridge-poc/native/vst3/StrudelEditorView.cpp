@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <ShlObj.h>
 #include <ShObjIdl.h>
+#include <shellapi.h>
 #include <wrl.h>
 
 #include <algorithm>
@@ -75,6 +76,56 @@ std::filesystem::path webViewUserDataPath() {
       L"WebView2";
   CoTaskMemFree(localAppData);
   return result;
+}
+
+bool prepareUserDataDirectory(const std::filesystem::path &root) {
+  if (root.empty()) {
+    return false;
+  }
+  std::error_code error;
+  for (const auto *subfolder : {L"Prebake", L"Presets", L"Samples",
+                                L"Exports"}) {
+    std::filesystem::create_directories(root / subfolder, error);
+    if (error) {
+      return false;
+    }
+  }
+
+  const auto probePath =
+      root / (L".write-test-" + std::to_wstring(GetCurrentProcessId()));
+  {
+    std::ofstream probe(probePath, std::ios::binary | std::ios::trunc);
+    if (!probe) {
+      return false;
+    }
+    probe << "ok";
+    if (!probe.good()) {
+      std::filesystem::remove(probePath, error);
+      return false;
+    }
+  }
+  std::filesystem::remove(probePath, error);
+  return !error;
+}
+
+std::filesystem::path userDataDirectory(bool &portable) {
+  portable = false;
+  const auto bundle = pluginBundlePath();
+  if (!bundle.empty()) {
+    const auto candidate = bundle / L"UserData";
+    if (prepareUserDataDirectory(candidate)) {
+      portable = true;
+      return candidate;
+    }
+  }
+
+  const auto webViewPath = webViewUserDataPath();
+  if (webViewPath.empty()) {
+    return {};
+  }
+  const auto fallback = webViewPath.parent_path() / L"UserData";
+  return prepareUserDataDirectory(fallback) ? fallback
+                                             : std::filesystem::path{};
 }
 
 std::filesystem::path sampleFolderSettingsPath() {
@@ -217,7 +268,8 @@ std::filesystem::path loadSampleFolderSetting(bool &remembered) {
 
   if (!bundlePath.empty()) {
     for (const auto *candidate : {L"Samples", L"samples",
-                                  L"uzu-drumkit-main"}) {
+                                  L"uzu-drumkit-main",
+                                  L"UserData/Samples"}) {
       const auto folder = bundlePath / candidate;
       std::error_code statusError;
       if (std::filesystem::is_directory(folder, statusError) && !statusError) {
@@ -395,6 +447,8 @@ HRESULT StrudelEditorView::createController(
               return result;
             }
 
+            self->m_userDataPath =
+                userDataDirectory(self->m_userDataPortable);
             self->m_sampleFolderPath =
                 loadSampleFolderSetting(self->m_sampleFolderRemembered);
             self->m_sampleFolderPortable =
@@ -469,6 +523,28 @@ HRESULT StrudelEditorView::handleWebMessage(
     }
     if (message == L"choose-sample-folder") {
       return selectSampleFolder();
+    }
+    if (message == L"request-portable-data-info") {
+      return sendPortableDataInfo();
+    }
+    if (message == L"request-portable-prebake") {
+      return sendPortablePrebake();
+    }
+    if (message == L"reset-portable-prebake") {
+      return resetPortablePrebake();
+    }
+    if (message == L"open-portable-data-folder") {
+      return openPortableDataFolder();
+    }
+    constexpr wchar_t kSavePortablePrebakePrefix[] =
+        L"save-portable-prebake:";
+    if (beginsWith(message, kSavePortablePrebakePrefix)) {
+      const auto prefixLength =
+          sizeof(kSavePortablePrebakePrefix) /
+              sizeof(kSavePortablePrebakePrefix[0]) -
+          1;
+      const auto source = wideToUtf8(message.substr(prefixLength));
+      return savePortablePrebake(source);
     }
     constexpr wchar_t kWebViewBackgroundAlphaPrefix[] =
         L"webview-background-alpha:";
@@ -547,6 +623,139 @@ HRESULT StrudelEditorView::sendEditorCode() {
   const std::wstring message =
       std::wstring(kEditorCodePrefix) + code;
   return m_webView->PostWebMessageAsString(message.c_str());
+}
+
+HRESULT StrudelEditorView::sendPortableDataInfo() {
+  if (!m_webView) {
+    return E_POINTER;
+  }
+  const auto path = wideToUtf8(m_userDataPath.wstring());
+  const std::string json =
+      "{\"type\":\"portable-data-info\",\"path\":\"" + jsonEscape(path) +
+      "\",\"portable\":" + (m_userDataPortable ? "true" : "false") + "}";
+  const auto wideJson = utf8ToWide(json);
+  return m_webView->PostWebMessageAsJson(wideJson.c_str());
+}
+
+HRESULT StrudelEditorView::sendPortablePrebake() {
+  if (!m_webView) {
+    return E_POINTER;
+  }
+  if (m_userDataPath.empty()) {
+    return m_webView->PostWebMessageAsString(
+        L"portable-prebake-error:No writable data folder is available.");
+  }
+  const auto path =
+      m_userDataPath / L"Prebake" / L"prebake.strudel";
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    return m_webView->PostWebMessageAsString(
+        L"portable-prebake-missing");
+  }
+  constexpr std::size_t kMaximumPrebakeBytes = 2 * 1024 * 1024;
+  file.seekg(0, std::ios::end);
+  const auto fileSize = static_cast<std::streamoff>(file.tellg());
+  if (fileSize < 0 ||
+      static_cast<std::uint64_t>(fileSize) > kMaximumPrebakeBytes) {
+    return m_webView->PostWebMessageAsString(
+        L"portable-prebake-error:Portable Prebake file exceeds 2 MB.");
+  }
+  file.seekg(0, std::ios::beg);
+  std::string source(static_cast<std::size_t>(fileSize), '\0');
+  if (!source.empty()) {
+    file.read(source.data(), static_cast<std::streamsize>(source.size()));
+    if (!file.good()) {
+      return m_webView->PostWebMessageAsString(
+          L"portable-prebake-error:Could not read the portable Prebake file.");
+    }
+  }
+  const auto wideSource = utf8ToWide(source);
+  if (!source.empty() && wideSource.empty()) {
+    return m_webView->PostWebMessageAsString(
+        L"portable-prebake-error:Portable Prebake file is not valid UTF-8.");
+  }
+  const std::wstring message =
+      std::wstring(L"portable-prebake-content:") + wideSource;
+  return m_webView->PostWebMessageAsString(message.c_str());
+}
+
+HRESULT StrudelEditorView::savePortablePrebake(const std::string &source) {
+  constexpr std::size_t kMaximumPrebakeBytes = 2 * 1024 * 1024;
+  HRESULT result = S_OK;
+  if (m_userDataPath.empty()) {
+    result = E_ACCESSDENIED;
+  } else if (source.size() > kMaximumPrebakeBytes) {
+    result = HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+  } else {
+    const auto path =
+        m_userDataPath / L"Prebake" / L"prebake.strudel";
+    auto temporaryPath = path;
+    temporaryPath += L".tmp";
+    {
+      std::ofstream file(temporaryPath, std::ios::binary | std::ios::trunc);
+      if (!file) {
+        result = E_ACCESSDENIED;
+      } else {
+        file.write(source.data(), static_cast<std::streamsize>(source.size()));
+        file.flush();
+        if (!file.good()) {
+          result = HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
+        }
+      }
+    }
+    if (SUCCEEDED(result) &&
+        !MoveFileExW(temporaryPath.c_str(), path.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+      result = HRESULT_FROM_WIN32(GetLastError());
+    }
+    if (FAILED(result)) {
+      std::error_code ignored;
+      std::filesystem::remove(temporaryPath, ignored);
+    }
+  }
+  if (m_webView) {
+    m_webView->PostWebMessageAsJson(
+        SUCCEEDED(result)
+            ? L"{\"type\":\"portable-prebake-save-result\",\"success\":true}"
+            : L"{\"type\":\"portable-prebake-save-result\",\"success\":false}");
+  }
+  return result;
+}
+
+HRESULT StrudelEditorView::resetPortablePrebake() {
+  std::error_code error;
+  if (!m_userDataPath.empty()) {
+    std::filesystem::remove(
+        m_userDataPath / L"Prebake" / L"prebake.strudel", error);
+  } else {
+    error = std::make_error_code(std::errc::permission_denied);
+  }
+  const auto result = error ? HRESULT_FROM_WIN32(error.value()) : S_OK;
+  if (m_webView) {
+    m_webView->PostWebMessageAsJson(
+        SUCCEEDED(result)
+            ? L"{\"type\":\"portable-prebake-reset-result\",\"success\":true}"
+            : L"{\"type\":\"portable-prebake-reset-result\",\"success\":false}");
+  }
+  return result;
+}
+
+HRESULT StrudelEditorView::openPortableDataFolder() {
+  if (!m_webView) {
+    return E_POINTER;
+  }
+  std::intptr_t shellResult = 0;
+  if (!m_userDataPath.empty()) {
+    shellResult = reinterpret_cast<std::intptr_t>(ShellExecuteW(
+        static_cast<HWND>(systemWindow), L"open", m_userDataPath.c_str(),
+        nullptr, nullptr, SW_SHOWNORMAL));
+  }
+  const bool opened = shellResult > 32;
+  m_webView->PostWebMessageAsJson(
+      opened
+          ? L"{\"type\":\"portable-data-folder-opened\",\"success\":true}"
+          : L"{\"type\":\"portable-data-folder-opened\",\"success\":false}");
+  return opened ? S_OK : E_FAIL;
 }
 
 HRESULT StrudelEditorView::setWebViewBackgroundAlpha(BYTE alpha) {

@@ -17,10 +17,20 @@ const userPrebakeStorageKey = "dexter-us-strudel-prebake-v1";
 
 async function loadUserPrebake() {
   try {
+    await window.__dexterPortablePrebakePromise;
+  } catch {
+    // Continue with profile storage or the bundled default if native loading fails.
+  }
+
+  if (typeof window.__dexterPortablePrebakeSource === "string") {
+    return window.__dexterPortablePrebakeSource;
+  }
+
+  try {
     const saved = window.localStorage.getItem(userPrebakeStorageKey);
     if (saved !== null) return saved;
   } catch {
-    // Fall back to the bundled portable file when browser storage is disabled.
+    // Fall back to the bundled file when browser storage is disabled.
   }
 
   try {

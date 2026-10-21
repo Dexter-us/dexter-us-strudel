@@ -35,6 +35,8 @@ const opacityStatus = document.querySelector("#opacity-status");
 const prebakeSource = document.querySelector("#prebake-source");
 const prebakeImportFile = document.querySelector("#prebake-import-file");
 const prebakeStatus = document.querySelector("#prebake-status");
+const portableDataStatus = document.querySelector("#portable-data-status");
+const openPortableDataButton = document.querySelector("#portable-data-open");
 const prebakeStorageKey = "dexter-us-strudel-prebake-v1";
 const opacityStorageKey = "dexter-us-strudel-window-opacity-v1";
 const defaultEditorSettings = {
@@ -119,10 +121,30 @@ function writeLocalEditorCode(code) {
 
 let initialEditorCode = readLocalEditorCode();
 let runtimeLoadError = null;
-const strudelRuntimeReady = import("./strudel-repl.js").catch((error) => {
-  runtimeLoadError = error;
-  return null;
+let releasePortablePrebake;
+let portablePrebakeResolved = false;
+const portablePrebakeReady = new Promise((resolve) => {
+  releasePortablePrebake = resolve;
 });
+window.__dexterPortablePrebakePromise = portablePrebakeReady;
+
+function finishPortablePrebake(source) {
+  if (typeof source === "string") {
+    window.__dexterPortablePrebakeSource = source;
+  }
+  if (!portablePrebakeResolved) {
+    portablePrebakeResolved = true;
+    releasePortablePrebake();
+  }
+}
+
+const strudelRuntimeReady = portablePrebakeReady
+  .then(() => import("./strudel-repl.js"))
+  .catch((error) => {
+    runtimeLoadError = error;
+    return null;
+  });
+let portableDataLocationLabel = "the portable data folder";
 
 versionLabel.textContent = `v${appVersion}`;
 
@@ -223,20 +245,8 @@ function refreshPrebakeEditor() {
       `Prebake has an error: ${window.__dexterStrudelPrebakeError}`;
   } else {
     prebakeStatus.textContent =
-      "Loaded at startup. Edits are saved in this WebView profile; export a copy to keep them portable.";
+      "Loaded at startup. Save changes to the portable Prebake folder to carry them with the VST3.";
   }
-}
-
-function exportPrebake() {
-  const file = new Blob([prebakeSource.value], { type: "text/plain" });
-  const url = URL.createObjectURL(file);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "prebake.strudel";
-  link.click();
-  URL.revokeObjectURL(url);
-  prebakeStatus.textContent =
-    "Exported prebake.strudel. Replace the bundled file to carry it with the VST3.";
 }
 
 applyWindowOpacity(readSavedOpacity(), false);
@@ -645,7 +655,7 @@ prebakeImportFile.addEventListener("change", async () => {
   try {
     prebakeSource.value = await file.text();
     prebakeStatus.textContent =
-      `Imported ${file.name}. Save it for the next editor open, or export a portable copy.`;
+      `Imported ${file.name}. Save it to the portable Prebake folder to use it with this VST3.`;
   } catch (error) {
     prebakeStatus.textContent =
       error instanceof Error ? error.message : "Could not read that file.";
@@ -653,29 +663,43 @@ prebakeImportFile.addEventListener("change", async () => {
   prebakeImportFile.value = "";
 });
 
-document.querySelector("#prebake-export").addEventListener("click", exportPrebake);
-
 document.querySelector("#prebake-save").addEventListener("click", () => {
+  const native = getWebViewBridge();
+  if (!native) {
+    prebakeStatus.textContent =
+      "Open the VST3 editor to save into its portable data folder.";
+    return;
+  }
   try {
     window.localStorage.setItem(prebakeStorageKey, prebakeSource.value);
-    prebakeStatus.textContent =
-      "Saved in this WebView profile. Close and reopen the editor to load it; export the file to keep it portable.";
   } catch {
-    prebakeStatus.textContent =
-      "Could not save to WebView storage. Export prebake.strudel instead.";
+    // The portable VST3 file remains the durable copy.
   }
+  native.postMessage(`save-portable-prebake:${prebakeSource.value}`);
+  prebakeStatus.textContent = "Saving to the portable Prebake folder…";
 });
 
 document.querySelector("#prebake-reset").addEventListener("click", async () => {
   try {
     window.localStorage.removeItem(prebakeStorageKey);
+    getWebViewBridge()?.postMessage("reset-portable-prebake");
     prebakeSource.value = await readBundledPrebake();
     prebakeStatus.textContent =
-      "Using the bundled portable file on the next editor open.";
+      "Reset requested. The bundled Prebake will load the next time the editor opens.";
   } catch (error) {
     prebakeStatus.textContent =
       error instanceof Error ? error.message : "Could not read the bundled file.";
   }
+});
+
+openPortableDataButton.addEventListener("click", () => {
+  const native = getWebViewBridge();
+  if (!native) {
+    portableDataStatus.textContent =
+      "Open the VST3 editor to open its portable data folder.";
+    return;
+  }
+  native.postMessage("open-portable-data-folder");
 });
 
 function openDrumGrooveMenu(event) {
@@ -932,6 +956,52 @@ connectButton.addEventListener("click", () => {
 const webview = getWebViewBridge();
 if (webview) {
   webview.addEventListener("message", (event) => {
+    if (event.data?.type === "portable-data-info") {
+      const folder = event.data.path || "Unavailable";
+      portableDataLocationLabel = folder;
+      portableDataStatus.textContent = event.data.portable
+        ? `Portable folder beside the VST3: ${folder}`
+        : `Per-user fallback (not portable): ${folder}`;
+      return;
+    }
+    if (event.data?.type === "portable-prebake-save-result") {
+      prebakeStatus.textContent = event.data.success
+        ? `Saved to ${portableDataLocationLabel}\\Prebake\\prebake.strudel. Reopen the editor to load changes.`
+        : `Could not save to ${portableDataLocationLabel}. Check that the folder is writable.`;
+      return;
+    }
+    if (event.data?.type === "portable-prebake-reset-result") {
+      if (!event.data.success) {
+        prebakeStatus.textContent =
+          "Could not remove the portable override; the bundled file may not be used next time.";
+      }
+      return;
+    }
+    if (event.data?.type === "portable-data-folder-opened") {
+      portableDataStatus.textContent = event.data.success
+        ? `Opened: ${portableDataLocationLabel}`
+        : `Could not open: ${portableDataLocationLabel}`;
+      return;
+    }
+    if (typeof event.data === "string") {
+      if (event.data === "portable-prebake-missing") {
+        finishPortablePrebake(null);
+        return;
+      }
+      if (event.data.startsWith("portable-prebake-content:")) {
+        const source = event.data.slice("portable-prebake-content:".length);
+        prebakeSource.value = source;
+        finishPortablePrebake(source);
+        return;
+      }
+      if (event.data.startsWith("portable-prebake-error:")) {
+        prebakeStatus.textContent = event.data.slice(
+          "portable-prebake-error:".length,
+        );
+        finishPortablePrebake(null);
+        return;
+      }
+    }
     if (event.data?.type === "webview-background-alpha-status") {
       opacityStatus.textContent = event.data.webViewAccepted
         ? "WebView2 accepted the opacity setting; VSTHost may still composite the plugin as opaque."
@@ -978,10 +1048,16 @@ if (webview) {
   showStatus("WebView2 host detected — requesting shared audio buffer");
   const backgroundAlpha = Math.round((readSavedOpacity() / 100) * 255);
   webview.postMessage(`webview-background-alpha:${backgroundAlpha}`);
+  webview.postMessage("request-portable-data-info");
+  webview.postMessage("request-portable-prebake");
+  window.setTimeout(() => finishPortablePrebake(null), 3000);
   webview.postMessage("request-editor-code");
   webview.postMessage("request-sample-folder-index");
   webview.postMessage({ type: "request-audio-buffer" });
 } else {
   showStatus("Browser preview only — native audio bridge unavailable");
+  portableDataStatus.textContent =
+    "Open the VST3 editor to use its portable data folders.";
+  finishPortablePrebake(null);
 }
 
