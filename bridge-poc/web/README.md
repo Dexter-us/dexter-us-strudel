@@ -50,6 +50,10 @@ editor to choose a groove. Its cycle speed and level sliders generate named
 numeric constants in the Strudel code. Insert/Update replaces the editor
 contents; playback still starts only when Run is pressed.
 
+Hydra's `hydra-synth` runtime is copied from the pinned npm dependency into the
+VST3's web assets and loaded locally by Strudel. This removes Hydra's runtime
+request to `unpkg.com`; Strudel's sample maps and sample audio still load online.
+
 Run `npm ci && npm run build` from this directory to build the page alone. The
 Windows target at `../native/vst3` packages the page into the VST3 bundle.
 

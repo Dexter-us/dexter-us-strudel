@@ -1,11 +1,11 @@
 {
   "name": "dexter-us-strudel-bridge-web",
   "private": true,
-  "version": "0.2.6",
+  "version": "0.2.7",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "node scripts/copy-hydra-runtime.mjs && vite build",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
