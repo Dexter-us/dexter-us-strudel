@@ -1,0 +1,129 @@
+:root {
+  color: #f2eee8;
+  background: #11120f;
+  font-family: Inter, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 680px;
+  min-height: 100vh;
+  background: radial-gradient(circle at 18% 0%, #252820 0, #11120f 46rem);
+}
+
+.toolbar {
+  align-items: center;
+  border-bottom: 1px solid #34372f;
+  display: flex;
+  gap: 1rem;
+  height: 3.75rem;
+  justify-content: space-between;
+  padding: 0 1.25rem;
+}
+
+.brand {
+  color: #c9c9b9;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+
+.brand span {
+  color: #d3e37a;
+  letter-spacing: 0.04em;
+}
+
+.bridge-status {
+  color: #b7bbab;
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+
+button {
+  background: #d3e37a;
+  border: 0;
+  border-radius: 0.4rem;
+  color: #171910;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.6rem 0.85rem;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+main {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: minmax(0, 1fr) 15rem;
+  min-height: calc(100vh - 3.75rem);
+}
+
+.editor-shell {
+  min-height: 32rem;
+  overflow: hidden;
+}
+
+#editor-mount {
+  height: 100%;
+  min-height: 32rem;
+}
+
+.loading-state {
+  align-items: center;
+  color: #abb09e;
+  display: grid;
+  font-size: 0.85rem;
+  height: 100%;
+  justify-items: center;
+  min-height: 32rem;
+}
+
+strudel-editor {
+  display: block;
+  height: 100%;
+  min-height: 32rem;
+}
+
+.meter {
+  align-content: start;
+  background: rgb(25 27 22 / 78%);
+  border-left: 1px solid #34372f;
+  color: #abb09e;
+  display: grid;
+  font-size: 0.75rem;
+  gap: 0.85rem;
+  line-height: 1.5;
+  padding: 1.2rem;
+}
+
+.meter strong {
+  color: #e7e9dc;
+  font-size: 0.8rem;
+}
+
+.meter p {
+  margin: 0.25rem 0 0;
+}
+
+@media (max-width: 800px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+
+  .meter {
+    border-left: 0;
+    border-top: 1px solid #34372f;
+  }
+}

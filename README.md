@@ -32,6 +32,10 @@ git submodule update --init --recursive
 4. Add egui controls beside the Strudel WebView; validate resize, focus/input, and teardown.
 5. Test full packaging and behavior in a Windows DAW.
 
-## Status
+## Bridge prototype status
 
-The Strudel source is pinned as a submodule. The audio bridge, plugin implementation, and DAW validation are not present yet.
+The full source is pinned as a submodule. The first bridge spike now includes a Strudel REPL/Web Audio tap and a native shared-ring-buffer reader with underrun/overrun behavior. The web bundle and native reader tests pass locally. The Windows WebView2 host, VST3 processor integration, and DAW validation are still outstanding.
+
+Build the web page with `cd bridge-poc/web && npm ci && npm run build`. Initialize upstream Strudel with `git submodule update --init --recursive`. The native ring-buffer test can be built with CMake from `bridge-poc/native`.
+
+The web bridge uses host-provided 64-byte shared-buffer metadata, stereo float32 frames, and 512-frame notifications. It is a test protocol, not a finalized latency or synchronization design.

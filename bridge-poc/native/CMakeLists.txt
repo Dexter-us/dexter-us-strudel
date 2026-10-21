@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(strudel_audio_bridge_poc LANGUAGES CXX)
+
+enable_testing()
+
+add_executable(shared_audio_ring_buffer_test SharedAudioRingBufferTest.cpp)
+target_compile_features(shared_audio_ring_buffer_test PRIVATE cxx_std_17)
+add_test(NAME shared_audio_ring_buffer_test COMMAND shared_audio_ring_buffer_test)

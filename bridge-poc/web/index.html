@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Dexter U.S. Strudel Bridge POC</title>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand">DEXTER U.S. <span>STRudel</span></div>
+      <div class="bridge-status" id="bridge-status" role="status">Waiting for native bridge</div>
+      <button id="connect-bridge" type="button">Connect audio bridge</button>
+    </header>
+    <main>
+      <section class="editor-shell" aria-label="Strudel live coding editor">
+        <div id="editor-mount" inert>
+          <div class="loading-state">Waiting for the native audio bridge…</div>
+        </div>
+      </section>
+      <aside class="meter" aria-live="polite">
+        <strong>Bridge diagnostics</strong>
+        <span id="audio-format">No shared audio buffer</span>
+        <span id="audio-frames">0 frames received</span>
+        <p>
+          Strudel renders through its own Web Audio graph. In this test, that graph
+          is tapped into native shared memory; the VST3 processor reads the frames
+          for its output buffers.
+        </p>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
