@@ -64,15 +64,18 @@ sample maps are not initialized at startup.
 
 The editor includes a floating Drum Builder popover for a kick/snare/hi-hat
 pattern. Left-click the toolbar button to open slider controls; right-click the
-editor to choose a groove. Its cycle speed and level sliders generate named
-numeric constants in the Strudel code. Insert/Update replaces the editor
-contents; playback still starts only when Run is pressed.
+editor to choose one of three grooves or open the custom drum-tab editor. The
+tab editor accepts 16-step K (kick), S (snare), H (closed hat), and O (open hat)
+rows, with `x`/`o` for hits, `-`/`.` for rests, and `|` as a visual bar separator.
+It validates the rows and generates Strudel `stack()` code. The builder's cycle
+speed and level sliders still generate named numeric constants. Insert/Update
+replaces the editor contents; playback still starts only when Run is pressed.
 
 The Settings popover exposes CodeMirror editor options, theme and font size,
-plus a solid/transparent WebView background switch. It uses only fully opaque
-or fully clear backgrounds; it does not apply fractional alpha to the rendered
-editor or side panels. Whether the host shows through a transparent WebView
-background depends on the VST host's composition behavior.
+plus a WebView background opacity slider. It changes the native WebView
+background only, not the text, toolbar, or side-panel opacity. Whether the host
+shows through a partially transparent WebView background depends on the VST
+host's composition behavior.
 
 `public/prebake.strudel` is copied into the VST3 web resources and loaded before
 the user's Strudel code. Add custom helpers by assigning them to `globalThis`,

@@ -12,6 +12,14 @@ const connectButton = document.querySelector("#connect-bridge");
 const runButton = document.querySelector("#run-strudel");
 const drumBuilderToggle = document.querySelector("#drum-builder-toggle");
 const drumBuilderPanel = document.querySelector("#drum-builder-panel");
+const drumTabToggle = document.querySelector("#drum-tab-toggle");
+const drumTabPanel = document.querySelector("#drum-tab-panel");
+const drumTabSource = document.querySelector("#drum-tab-source");
+const drumTabStatus = document.querySelector("#drum-tab-status");
+const drumTabCodePreview = document.querySelector("#drum-tab-code-preview");
+const drumTabGenerateButton = document.querySelector("#generate-drum-tab");
+const drumTabInsertButton = document.querySelector("#insert-drum-tab");
+const drumTabCloseButton = document.querySelector("#drum-tab-close");
 const drumCodePreview = document.querySelector("#drum-code-preview");
 const insertDrumPatternButton = document.querySelector("#insert-drum-pattern");
 const drumGrooveMenu = document.querySelector("#drum-groove-menu");
@@ -21,13 +29,14 @@ const settingsClose = document.querySelector("#settings-close");
 const themeSelect = document.querySelector("#setting-theme");
 const fontSizeInput = document.querySelector("#setting-font-size");
 const fontSizeOutput = document.querySelector("#setting-font-size-value");
-const editorBackgroundSelect = document.querySelector("#setting-editor-background");
-const transparencyStatus = document.querySelector("#transparency-status");
+const opacityInput = document.querySelector("#setting-opacity");
+const opacityOutput = document.querySelector("#setting-opacity-value");
+const opacityStatus = document.querySelector("#opacity-status");
 const prebakeSource = document.querySelector("#prebake-source");
 const prebakeImportFile = document.querySelector("#prebake-import-file");
 const prebakeStatus = document.querySelector("#prebake-status");
 const prebakeStorageKey = "dexter-us-strudel-prebake-v1";
-const editorBackgroundStorageKey = "dexter-us-strudel-editor-background-v1";
+const opacityStorageKey = "dexter-us-strudel-window-opacity-v1";
 const defaultEditorSettings = {
   keybindings: "codemirror",
   isBracketMatchingEnabled: false,
@@ -131,30 +140,26 @@ function getWebViewBridge() {
   return window.chrome?.webview ?? null;
 }
 
-function readSavedEditorBackground() {
+function readSavedOpacity() {
   try {
-    return window.localStorage.getItem(editorBackgroundStorageKey) === "transparent"
-      ? "transparent"
-      : "solid";
+    const value = Number(window.localStorage.getItem(opacityStorageKey));
+    return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 100;
   } catch {
-    return "solid";
+    return 100;
   }
 }
 
-function applyEditorBackground(value, notifyNative = true) {
-  const mode = value === "transparent" ? "transparent" : "solid";
-  document.documentElement.classList.toggle(
-    "transparent-editor",
-    mode === "transparent",
-  );
-  editorBackgroundSelect.value = mode;
+function applyWindowOpacity(value, notifyNative = true) {
+  const opacity = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+  opacityInput.value = String(opacity);
+  opacityOutput.value = `${opacity}%`;
   try {
-    window.localStorage.setItem(editorBackgroundStorageKey, mode);
+    window.localStorage.setItem(opacityStorageKey, String(opacity));
   } catch {
-    // Keep the current appearance for this editor session.
+    // Keep the current setting for this editor session.
   }
   if (notifyNative) {
-    const alpha = mode === "transparent" ? 0 : 255;
+    const alpha = Math.round((opacity / 100) * 255);
     getWebViewBridge()?.postMessage(`webview-background-alpha:${alpha}`);
   }
 }
@@ -234,7 +239,7 @@ function exportPrebake() {
     "Exported prebake.strudel. Replace the bundled file to carry it with the VST3.";
 }
 
-applyEditorBackground(readSavedEditorBackground(), false);
+applyWindowOpacity(readSavedOpacity(), false);
 
 async function mountStrudel() {
   if (strudelMounted) return;
@@ -349,6 +354,107 @@ function findLocalDrumBank(aliases, fallback) {
   );
 }
 
+const drumTabTracks = [
+  {
+    key: "k",
+    aliases: ["k", "kick"],
+    sample: () =>
+      findLocalDrumBank(["bd", "kick", "kickdrum", "bassdrum"], "bd"),
+  },
+  {
+    key: "s",
+    aliases: ["s", "sn", "snare"],
+    sample: () =>
+      findLocalDrumBank(["sd", "sn", "snare", "snaredrum"], "sd"),
+  },
+  {
+    key: "h",
+    aliases: ["h", "hh", "hat", "hihat", "closedhat"],
+    sample: () =>
+      findLocalDrumBank(["hh", "ch", "closedhat", "hihat", "hat"], "hh"),
+  },
+  {
+    key: "o",
+    aliases: ["o", "oh", "openhat"],
+    sample: () => findLocalDrumBank(["oh", "openhat"], "oh"),
+  },
+];
+
+function parseDrumTab(source) {
+  const rows = new Map();
+  for (const [lineIndex, rawLine] of source.split(/\r?\n/).entries()) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("//")) continue;
+    const match = line.match(/^([a-z]+)\s*:\s*(.*)$/i);
+    if (!match) {
+      throw new Error(
+        `Line ${lineIndex + 1}: use a track label and colon, e.g. K: x---.`,
+      );
+    }
+    const label = match[1].toLowerCase();
+    const track = drumTabTracks.find((candidate) =>
+      candidate.aliases.includes(label),
+    );
+    if (!track) {
+      throw new Error(
+        `Line ${lineIndex + 1}: unknown track “${match[1]}”. Use K, S, H, or O.`,
+      );
+    }
+    if (rows.has(track.key)) {
+      throw new Error(
+        `Line ${lineIndex + 1}: track ${track.key.toUpperCase()} is listed twice.`,
+      );
+    }
+    const steps = match[2].replace(/[|\s]/g, "");
+    if (!/^[xXoO.\-_]+$/.test(steps)) {
+      throw new Error(
+        `Line ${lineIndex + 1}: use x/o for hits and - or . for rests.`,
+      );
+    }
+    if (steps.length !== 16) {
+      throw new Error(
+        `Line ${lineIndex + 1}: expected 16 steps, found ${steps.length}.`,
+      );
+    }
+    rows.set(track.key, [...steps].map((step) => /[xXoO]/.test(step)));
+  }
+  if (!rows.size) throw new Error("Enter at least one drum-tab row.");
+  return rows;
+}
+
+function generateDrumTabCode() {
+  const rows = parseDrumTab(drumTabSource.value);
+  const patterns = [];
+  for (const track of drumTabTracks) {
+    const steps = rows.get(track.key);
+    if (!steps?.some(Boolean)) continue;
+    const sample = track.sample();
+    const tokens = steps.map((hit) => (hit ? sample : "~"));
+    patterns.push(`  s("${tokens.join(" ")}")`);
+  }
+  if (!patterns.length) throw new Error("Add at least one hit marked x or o.");
+  return `// Generated from the drum tab
+setcps(0.75)
+
+stack(
+${patterns.join(",\n")}
+)`;
+}
+
+function updateDrumTabPreview() {
+  try {
+    drumTabCodePreview.textContent = generateDrumTabCode();
+    drumTabStatus.textContent =
+      "16 steps per row · use Generate code to refresh the preview.";
+    drumTabStatus.style.color = "";
+  } catch (error) {
+    drumTabCodePreview.textContent = "";
+    drumTabStatus.textContent =
+      error instanceof Error ? error.message : String(error);
+    drumTabStatus.style.color = "#ff9b8f";
+  }
+}
+
 function updateDrumBuilder() {
   for (const [, input, output] of drumControls) {
     output.value = Number(input.value).toFixed(2);
@@ -457,6 +563,38 @@ drumBuilderToggle.addEventListener("click", () => {
   drumBuilderToggle.setAttribute("aria-expanded", String(isOpen));
 });
 
+drumTabToggle.addEventListener("click", () => {
+  const isOpen = drumTabPanel.hidden;
+  drumTabPanel.hidden = !isOpen;
+  drumTabToggle.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) updateDrumTabPreview();
+});
+
+drumTabCloseButton.addEventListener("click", () => {
+  drumTabPanel.hidden = true;
+  drumTabToggle.setAttribute("aria-expanded", "false");
+  drumTabToggle.focus();
+});
+
+drumTabSource.addEventListener("input", updateDrumTabPreview);
+drumTabGenerateButton.addEventListener("click", updateDrumTabPreview);
+drumTabInsertButton.addEventListener("click", () => {
+  if (!strudelEditor || !strudelMounted) {
+    showStatus("Connect the audio bridge before inserting a pattern", true);
+    return;
+  }
+  try {
+    const code = generateDrumTabCode();
+    strudelEditor.setAttribute("code", code);
+    saveEditorCode(code);
+    showStatus("Drum-tab code inserted — press Run to play it");
+  } catch (error) {
+    drumTabStatus.textContent =
+      error instanceof Error ? error.message : String(error);
+    drumTabStatus.style.color = "#ff9b8f";
+  }
+});
+
 settingsToggle.addEventListener("click", () => {
   const isOpen = settingsPanel.hidden;
   settingsPanel.hidden = !isOpen;
@@ -490,9 +628,12 @@ for (const input of editorSettingInputs) {
   });
 }
 
-editorBackgroundSelect.addEventListener("change", () => {
-  applyEditorBackground(editorBackgroundSelect.value);
-});
+opacityInput.addEventListener("input", () =>
+  applyWindowOpacity(opacityInput.value, false),
+);
+opacityInput.addEventListener("change", () =>
+  applyWindowOpacity(opacityInput.value, true),
+);
 
 document.querySelector("#prebake-import").addEventListener("click", () => {
   prebakeImportFile.click();
@@ -541,7 +682,7 @@ function openDrumGrooveMenu(event) {
   event.preventDefault();
   drumGrooveMenu.hidden = false;
   const menuWidth = 220;
-  const menuHeight = 150;
+  const menuHeight = drumGrooveMenu.scrollHeight || 190;
   drumGrooveMenu.style.left = `${Math.max(
     8,
     Math.min(event.clientX, window.innerWidth - menuWidth - 8),
@@ -559,6 +700,14 @@ editorMount.addEventListener("contextmenu", openDrumGrooveMenu, true);
 drumGrooveMenu.addEventListener("click", (event) => {
   const choice = event.target.closest("[data-groove]");
   if (!choice) return;
+  if (choice.dataset.groove === "custom") {
+    drumGrooveMenu.hidden = true;
+    drumTabPanel.hidden = false;
+    drumTabToggle.setAttribute("aria-expanded", "true");
+    updateDrumTabPreview();
+    drumTabSource.focus();
+    return;
+  }
   selectedDrumGroove = choice.dataset.groove;
   updateDrumBuilder();
   drumBuilderPanel.hidden = false;
@@ -584,6 +733,14 @@ document.addEventListener("pointerdown", (event) => {
     drumGrooveMenu.hidden = true;
   }
   if (
+    !drumTabPanel.hidden &&
+    !drumTabPanel.contains(event.target) &&
+    event.target !== drumTabToggle
+  ) {
+    drumTabPanel.hidden = true;
+    drumTabToggle.setAttribute("aria-expanded", "false");
+  }
+  if (
     !settingsPanel.hidden &&
     !settingsPanel.contains(event.target) &&
     event.target !== settingsToggle
@@ -595,6 +752,11 @@ document.addEventListener("pointerdown", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    if (!drumTabPanel.hidden) {
+      drumTabPanel.hidden = true;
+      drumTabToggle.setAttribute("aria-expanded", "false");
+      drumTabToggle.focus();
+    }
     if (!settingsPanel.hidden) {
       settingsPanel.hidden = true;
       settingsToggle.setAttribute("aria-expanded", "false");
@@ -771,9 +933,9 @@ const webview = getWebViewBridge();
 if (webview) {
   webview.addEventListener("message", (event) => {
     if (event.data?.type === "webview-background-alpha-status") {
-      transparencyStatus.textContent = event.data.webViewAccepted
-        ? "WebView2 accepted the background mode; VSTHost may still composite the plugin as opaque."
-        : "WebView2 rejected the background mode. The solid setting remains available.";
+      opacityStatus.textContent = event.data.webViewAccepted
+        ? "WebView2 accepted the opacity setting; VSTHost may still composite the plugin as opaque."
+        : "WebView2 rejected the opacity setting.";
       return;
     }
     if (event.data?.type === "sample-folder-index") {
@@ -814,8 +976,7 @@ if (webview) {
     }
   });
   showStatus("WebView2 host detected — requesting shared audio buffer");
-  const backgroundAlpha =
-    readSavedEditorBackground() === "transparent" ? 0 : 255;
+  const backgroundAlpha = Math.round((readSavedOpacity() / 100) * 255);
   webview.postMessage(`webview-background-alpha:${backgroundAlpha}`);
   webview.postMessage("request-editor-code");
   webview.postMessage("request-sample-folder-index");

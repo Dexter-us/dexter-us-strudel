@@ -480,8 +480,7 @@ HRESULT StrudelEditorView::handleWebMessage(
       const auto alpha =
           std::wcstoul(message.c_str() + prefixLength, &end, 10);
       const bool valid = end != message.c_str() + prefixLength &&
-                         end != nullptr && *end == L'\0' &&
-                         (alpha == 0 || alpha == 255);
+                         end != nullptr && *end == L'\0' && alpha <= 255;
       const auto alphaResult =
           valid ? setWebViewBackgroundAlpha(static_cast<BYTE>(alpha))
                 : E_INVALIDARG;
