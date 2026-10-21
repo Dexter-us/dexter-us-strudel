@@ -67,17 +67,18 @@ main {
   display: grid;
   gap: 1px;
   grid-template-columns: minmax(0, 1fr) 15rem;
-  min-height: calc(100vh - 3.75rem);
+  height: calc(100vh - 3.75rem);
+  min-height: 0;
 }
 
 .editor-shell {
-  min-height: 32rem;
-  overflow: hidden;
+  min-height: 0;
+  overflow: auto;
 }
 
 #editor-mount {
   height: 100%;
-  min-height: 32rem;
+  min-height: 0;
 }
 
 .loading-state {
@@ -87,13 +88,21 @@ main {
   font-size: 0.85rem;
   height: 100%;
   justify-items: center;
-  min-height: 32rem;
+  min-height: 100%;
 }
 
 strudel-editor {
-  display: block;
+  /* StrudelMirror mounts CodeMirror in a sibling after this custom element. */
+  display: contents;
+}
+
+strudel-editor + div {
   height: 100%;
-  min-height: 32rem;
+  min-height: 100%;
+}
+
+strudel-editor + div .cm-editor {
+  height: 100%;
 }
 
 .meter {
