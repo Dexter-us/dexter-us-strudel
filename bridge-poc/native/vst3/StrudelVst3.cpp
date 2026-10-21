@@ -9,12 +9,8 @@
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "public.sdk/source/main/pluginfactory.h"
 
-#include <Objbase.h>
-#include <ShlObj.h>
-
 #include <cmath>
 #include <cstring>
-#include <filesystem>
 #include <string>
 #include <utility>
 
@@ -24,20 +20,6 @@ namespace {
 constexpr char kStateMagic[4] = {'D', 'U', 'S', 'C'};
 constexpr std::uint32_t kStateVersion = 1;
 constexpr std::uint32_t kMaximumEditorCodeBytes = 4 * 1024 * 1024;
-
-std::filesystem::path webViewUserDataPath() {
-  PWSTR localAppData = nullptr;
-  if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE,
-                                  nullptr, &localAppData)) ||
-      localAppData == nullptr) {
-    return {};
-  }
-  const std::filesystem::path result =
-      std::filesystem::path(localAppData) / L"DexterUS" / L"Strudel" /
-      L"WebView2";
-  CoTaskMemFree(localAppData);
-  return result;
-}
 
 tresult writeStateBytes(IBStream *stream, const void *data, int32 size) {
   int32 written = 0;
@@ -118,59 +100,7 @@ tresult PLUGIN_API StrudelVst3Processor::initialize(FUnknown *context) {
   }
 
   addAudioOutput(STR16("Strudel Audio"), SpeakerArr::kStereo);
-  warmWebView2Environment();
   return kResultOk;
-}
-
-void StrudelVst3Processor::warmWebView2Environment() {
-  // WebView2 environments belong to the apartment that creates them. Only
-  // prewarm from an STA; the editor can create its own environment otherwise.
-  APTTYPE apartmentType{};
-  APTTYPEQUALIFIER apartmentQualifier{};
-  if (FAILED(CoGetApartmentType(&apartmentType, &apartmentQualifier)) ||
-      (apartmentType != APTTYPE_STA && apartmentType != APTTYPE_MAINSTA)) {
-    return;
-  }
-
-  const auto userData = webViewUserDataPath();
-  if (userData.empty()) {
-    return;
-  }
-  try {
-    std::filesystem::create_directories(userData);
-  } catch (...) {
-    return;
-  }
-
-  {
-    std::lock_guard<std::mutex> lock(m_webViewEnvironmentMutex);
-    m_webViewEnvironmentThreadId = GetCurrentThreadId();
-  }
-
-  auto self = Steinberg::IPtr<StrudelVst3Processor>(this);
-  const auto callback =
-      Microsoft::WRL::Callback<
-          ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-          [self](HRESULT error,
-                 ICoreWebView2Environment *environment) mutable -> HRESULT {
-            if (SUCCEEDED(error) && environment != nullptr) {
-              std::lock_guard<std::mutex> lock(
-                  self->m_webViewEnvironmentMutex);
-              self->m_warmedWebViewEnvironment = environment;
-            }
-            return S_OK;
-          });
-  CreateCoreWebView2EnvironmentWithOptions(
-      nullptr, userData.c_str(), nullptr, callback.Get());
-}
-
-Microsoft::WRL::ComPtr<ICoreWebView2Environment>
-StrudelVst3Processor::warmedWebViewEnvironment() const {
-  std::lock_guard<std::mutex> lock(m_webViewEnvironmentMutex);
-  if (m_webViewEnvironmentThreadId != GetCurrentThreadId()) {
-    return {};
-  }
-  return m_warmedWebViewEnvironment;
 }
 
 tresult PLUGIN_API StrudelVst3Processor::setState(IBStream *state) {
@@ -294,7 +224,7 @@ BEGIN_FACTORY_DEF("Dexter U.S.",
 
 DEF_CLASS2(INLINE_UID(0xD3E7A5B1, 0x4C2A6F80, 0xAB10CD23, 0x9F775E41),
             PClassInfo::kManyInstances, kVstAudioEffectClass,
-            "Dexter U.S. Strudel", 0, "Instrument|Synth", "0.2.3",
+            "Dexter U.S. Strudel", 0, "Instrument|Synth", "0.2.4",
            kVstVersionString, StrudelVst3Processor::createInstance)
 
 END_FACTORY
