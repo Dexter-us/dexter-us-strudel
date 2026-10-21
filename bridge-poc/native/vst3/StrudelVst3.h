@@ -47,15 +47,22 @@ class StrudelVst3Processor final : public SingleComponentEffect {
 
   void setEditorCode(std::string code);
   std::string editorCode() const;
+  Microsoft::WRL::ComPtr<ICoreWebView2Environment>
+  warmedWebViewEnvironment() const;
 
   dexter::strudel::bridge::SharedAudioRingBufferReader *retainSharedBuffer(
       Microsoft::WRL::ComPtr<ICoreWebView2SharedBuffer> buffer,
       std::uint32_t expectedSampleRate);
 
  private:
+  void warmWebView2Environment();
+
   std::atomic<std::uint32_t> m_sampleRate{48000};
   mutable std::mutex m_editorCodeMutex;
   std::string m_editorCode;
+  mutable std::mutex m_webViewEnvironmentMutex;
+  Microsoft::WRL::ComPtr<ICoreWebView2Environment> m_warmedWebViewEnvironment;
+  DWORD m_webViewEnvironmentThreadId{0};
   std::atomic<dexter::strudel::bridge::SharedAudioRingBufferReader *>
       m_activeReader{nullptr};
 

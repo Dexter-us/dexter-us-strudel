@@ -154,6 +154,10 @@ HRESULT StrudelEditorView::createWebView() {
     return E_ACCESSDENIED;
   }
 
+  if (auto environment = m_processor->warmedWebViewEnvironment()) {
+    return createController(environment.Get());
+  }
+
   auto self = Steinberg::IPtr<StrudelEditorView>(this);
   const auto callback =
       Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
