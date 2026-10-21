@@ -1,3 +1,7 @@
 [submodule "third_party/strudel"]
 	path = third_party/strudel
 	url = https://codeberg.org/uzu/strudel.git
+
+[submodule "third_party/vst3sdk"]
+	path = third_party/vst3sdk
+	url = https://github.com/steinbergmedia/vst3sdk.git

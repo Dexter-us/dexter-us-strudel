@@ -1,0 +1,42 @@
+name: Windows VST3 prototype
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/windows-vst3.yml"
+      - ".gitmodules"
+      - "third_party/vst3sdk"
+      - "bridge-poc/native/**"
+      - "bridge-poc/web/**"
+      - "README.md"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configure
+        run: cmake -S bridge-poc/native/vst3 -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target DexterUSStrudel
+
+      - name: Run ring-buffer tests
+        run: |
+          cmake -S bridge-poc/native -B build-tests
+          cmake --build build-tests --config Release
+          ctest --test-dir build-tests -C Release --output-on-failure
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DexterUSStrudel-VST3
+          path: build/VST3/Release/DexterUSStrudel.vst3
+          if-no-files-found: error

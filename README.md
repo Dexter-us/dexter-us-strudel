@@ -34,8 +34,8 @@ git submodule update --init --recursive
 
 ## Bridge prototype status
 
-The full source is pinned as a submodule. The first bridge spike now includes a Strudel REPL/Web Audio tap and a native shared-ring-buffer reader with underrun/overrun behavior. The web bundle and native reader tests pass locally. The Windows WebView2 host, VST3 processor integration, and DAW validation are still outstanding.
+The full source is pinned as a submodule. The first bridge spike now includes a Strudel REPL/Web Audio tap and a native shared-ring-buffer reader with underrun/overrun behavior. The web bundle and native reader tests pass locally. A Windows VST3 processor and WebView2 editor shell are now included. Windows build, WebView2 Runtime execution, and VSTHost playback/effect-chain validation are still outstanding.
 
-Build the web page with `cd bridge-poc/web && npm ci && npm run build`. Initialize upstream Strudel with `git submodule update --init --recursive`. The native ring-buffer test can be built with CMake from `bridge-poc/native`.
+Build the web page with `cd bridge-poc/web && npm ci && npm run build`. Initialize upstream Strudel with `git submodule update --init --recursive`. The native ring-buffer test can be built with CMake from `bridge-poc/native`. The Windows VST3 target is configured from `bridge-poc/native/vst3`; its build packages the web editor and produces `DexterUSStrudel.vst3`.
 
 The web bridge uses host-provided 64-byte shared-buffer metadata, stereo float32 frames, and 512-frame notifications. It is a test protocol, not a finalized latency or synchronization design.

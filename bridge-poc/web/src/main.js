@@ -44,10 +44,24 @@ async function installAudioCapture(buffer, config = {}) {
     throw new Error("Native host supplied an unsupported sample rate");
   }
 
-  const audioContext = new AudioContext({
-    sampleRate,
-    latencyHint: "interactive",
-  });
+  let audioContext;
+  try {
+    audioContext = new AudioContext({
+      sampleRate,
+      latencyHint: "interactive",
+      sinkId: { type: "none" },
+    });
+  } catch {
+    throw new Error(
+      "This WebView2 Runtime must support AudioContext's silent sink to keep browser audio out of the plugin path",
+    );
+  }
+  if (audioContext.sinkId?.type !== "none") {
+    await audioContext.close();
+    throw new Error(
+      "This WebView2 Runtime did not select the silent audio sink",
+    );
+  }
   setAudioContext(audioContext);
 
   await audioContext.audioWorklet.addModule(
@@ -130,14 +144,9 @@ if (webview) {
       connectButton.disabled = false;
     }
   });
-  showStatus("WebView2 host detected — connect the audio bridge");
+  showStatus("WebView2 host detected — requesting shared audio buffer");
   webview.postMessage({ type: "request-audio-buffer" });
 } else {
   showStatus("Browser preview only — native audio bridge unavailable");
 }
 
-// Keep getAudioContext referenced for diagnostics while the native host is
-// being implemented; Strudel's REPL uses this same shared AudioContext.
-window.strudelBridge = {
-  getAudioContext,
-};
