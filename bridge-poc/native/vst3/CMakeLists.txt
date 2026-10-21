@@ -51,12 +51,10 @@ endif()
 
 set(STRUDEL_WEB_DIR "${CMAKE_CURRENT_LIST_DIR}/../../web")
 set(STRUDEL_WEB_DIST "${STRUDEL_WEB_DIR}/dist")
-add_custom_target(strudel_web_assets
-  COMMAND npm ci --no-audit --no-fund
-  COMMAND npm run build
-  WORKING_DIRECTORY "${STRUDEL_WEB_DIR}"
-  COMMENT "Building the full Strudel WebView editor"
-  VERBATIM)
+if(NOT EXISTS "${STRUDEL_WEB_DIST}/index.html")
+  message(FATAL_ERROR
+    "Strudel web assets are missing. Run npm ci and npm run build in bridge-poc/web first.")
+endif()
 
 smtg_add_vst3plugin(DexterUSStrudel
   StrudelVst3.cpp
@@ -79,7 +77,6 @@ target_link_libraries(DexterUSStrudel PRIVATE
   shell32
   shlwapi
   user32)
-add_dependencies(DexterUSStrudel strudel_web_assets)
 
 get_target_property(STRUDEL_PLUGIN_PACKAGE DexterUSStrudel
                     SMTG_PLUGIN_PACKAGE_PATH)
