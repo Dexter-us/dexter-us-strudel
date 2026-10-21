@@ -1,29 +1,31 @@
 # Dexter U.S. Strudel
 
-A private Windows VST3 experiment for live-coding Strudel patterns inside a plugin editor and rendering their sound through the plugin's audio outputs.
+A private Windows VST3 experiment to embed the **full Strudel live-coding environment** and return its sound through the plugin's VST3 outputs.
 
-## UI direction
+## Intended architecture
 
-- **WebView2:** Strudel's browser-based editor and JavaScript pattern runtime.
+- **WebView2:** run Strudel's full JavaScript runtime and REPL/editor, including its pattern engine, mini-notation, transpiler, and browser-based synth/sampler audio stack.
 - **egui:** native plugin controls and status UI in a separate region from the WebView.
-- **No MIDI conversion:** Strudel remains the live-coding language. The WebView should send Strudel-derived pattern events to the plugin through an internal event protocol.
+- **No MIDI conversion:** preserve Strudel as a live-coding language; do not reduce its program to a MIDI workflow or a hand-picked event subset.
 
-## Audio architecture
+## VST3 audio output
 
-The plugin's native audio engine must render the sound in the VST3 process callback and write it to the plugin output buffers. That lets the DAW process the VST3 output through effects inserted after this instrument. Web Audio playback inside WebView2 is not the output path for this mode.
+Strudel's Web Audio output must be bridged into the plugin's VST3 output buffers so the DAW can process it through downstream effects. The likely prototype is a Web Audio tap feeding a bounded native audio ring buffer, consumed by the plugin's real-time process callback. The callback must not call WebView2, block, or allocate. WebView playback to the computer's speakers should be disabled in plugin mode to avoid a second, unprocessed copy.
 
-The WebView-to-plugin boundary should carry scheduled Strudel pattern data (for example event time, duration, pitch or sample/synth parameters) into a bounded, real-time-safe queue. The audio callback must not wait on the UI, allocate, or perform WebView calls. A first version should define and support a deliberate subset of Strudel patterns rather than promise full language/audio-engine compatibility.
+This audio bridge is a feasibility milestone, not yet proven. Measure latency, underruns, sample-rate handling, lifecycle/restart behavior, multiple plugin instances, and Windows DAW compatibility. Host transport synchronization is a separate feature from routing audio through the VST3 outputs.
 
-Host transport sync is a separate feature decision; plugin audio output does not by itself imply host-clock synchronization.
+## Upstream and licensing
+
+Strudel's current source is maintained at [Codeberg](https://codeberg.org/uzu/strudel) and declares **AGPL-3.0-or-later**. Review license compatibility before vendoring, modifying, or distributing the runtime with this plugin. The upstream source has not yet been copied into this repository.
 
 ## Milestones
 
-1. Bundle the Strudel editor/runtime and verify pattern evaluation offline in WebView2.
-2. Define a small internal pattern-event protocol and safely transfer events to the plugin processor.
-3. Render a supported pattern subset in the plugin's native audio engine and verify audio reaches the VST3 output buffers.
-4. Add egui controls alongside the WebView; validate resize, focus/input, and WebView lifetime.
-5. Test the packaged VST3 in a Windows DAW and confirm a downstream host effect receives its output.
+1. Pin and build the complete upstream Strudel runtime locally in WebView2.
+2. Prove a Web Audio-to-native audio bridge with a standalone Windows harness.
+3. Integrate the bridge into VST3 processing and confirm the plugin outputs reach a downstream DAW effect.
+4. Add egui controls beside the Strudel WebView; validate resize, focus/input, and teardown.
+5. Test full packaging and behavior in a Windows DAW.
 
 ## Status
 
-Architecture brief only. No plugin implementation, audio bridge, or DAW validation is present yet.
+Architecture brief only. No Strudel source, audio bridge, plugin implementation, or DAW validation is present yet.
