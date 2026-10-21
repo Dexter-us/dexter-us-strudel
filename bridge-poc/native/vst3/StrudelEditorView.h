@@ -12,6 +12,7 @@
 #include "public.sdk/source/common/pluginview.h"
 
 #include <atomic>
+#include <filesystem>
 
 namespace Steinberg::Vst {
 
@@ -34,6 +35,9 @@ class StrudelEditorView final : public CPluginView {
   HRESULT handleWebMessage(ICoreWebView2WebMessageReceivedEventArgs *args);
   HRESULT provideAudioBuffer();
   HRESULT sendEditorCode();
+  HRESULT selectSampleFolder();
+  HRESULT sendSampleFolderIndex();
+  HRESULT mapSampleFolder(const std::filesystem::path &folder);
   void updateBounds();
   void showError(const wchar_t *message) const;
   void closeWebView() noexcept;
@@ -46,6 +50,9 @@ class StrudelEditorView final : public CPluginView {
   Microsoft::WRL::ComPtr<ICoreWebView2Environment12> m_environment12;
   Microsoft::WRL::ComPtr<ICoreWebView2SharedBuffer> m_sharedBuffer;
   dexter::strudel::bridge::SharedAudioRingBufferReader *m_reader{nullptr};
+  std::filesystem::path m_sampleFolderPath;
+  bool m_sampleFolderPortable{false};
+  bool m_sampleFolderRemembered{false};
   EventRegistrationToken m_messageToken{};
   std::atomic<bool> m_closing{false};
 };

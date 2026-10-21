@@ -145,6 +145,47 @@ strudel-editor + div .cm-editor {
   gap: 0.85rem;
 }
 
+.sample-library {
+  border-top: 1px solid #34372f;
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 1rem;
+}
+
+.sample-library p {
+  overflow-wrap: anywhere;
+}
+
+.sample-library button {
+  justify-self: start;
+}
+
+.sample-library details {
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.sample-library summary {
+  color: #e7e9dc;
+  cursor: pointer;
+}
+
+.sample-library ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.sample-library li {
+  margin: 0.2rem 0;
+}
+
+.sample-library code {
+  color: #d3e37a;
+  font: 0.68rem Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
 .drum-builder {
   background: #1a1c17;
   border: 1px solid #4b5040;

@@ -4,16 +4,22 @@
 
 #include <Windows.h>
 #include <ShlObj.h>
+#include <ShObjIdl.h>
 #include <wrl.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cwchar>
+#include <cwctype>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <string>
+#include <system_error>
+#include <vector>
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
@@ -24,8 +30,10 @@ using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 
 constexpr wchar_t kVirtualHostName[] = L"strudel.local";
+constexpr wchar_t kSampleVirtualHostName[] = L"strudel-samples.local";
 constexpr std::uint32_t kRingCapacityFrames = 65536;
 constexpr std::uint32_t kMaximumSampleRate = 192000;
+constexpr std::size_t kMaximumIndexedSampleFiles = 10000;
 const ViewRect kEditorSize{0, 0, 1200, 800};
 
 std::filesystem::path pluginModulePath() {
@@ -39,12 +47,20 @@ std::filesystem::path pluginModulePath() {
   return std::filesystem::path(std::wstring(path.data(), length));
 }
 
-std::filesystem::path webAssetsPath() {
+std::filesystem::path pluginBundlePath() {
   const auto modulePath = pluginModulePath();
   if (modulePath.empty()) {
     return {};
   }
-  return modulePath.parent_path().parent_path() / L"Resources" / L"web";
+  return modulePath.parent_path().parent_path().parent_path();
+}
+
+std::filesystem::path webAssetsPath() {
+  const auto bundlePath = pluginBundlePath();
+  if (bundlePath.empty()) {
+    return {};
+  }
+  return bundlePath / L"Contents" / L"Resources" / L"web";
 }
 
 std::filesystem::path webViewUserDataPath() {
@@ -59,6 +75,12 @@ std::filesystem::path webViewUserDataPath() {
       L"WebView2";
   CoTaskMemFree(localAppData);
   return result;
+}
+
+std::filesystem::path sampleFolderSettingsPath() {
+  const auto bundlePath = pluginBundlePath();
+  return bundlePath.empty() ? std::filesystem::path{}
+                            : bundlePath / L"sample-folder.txt";
 }
 
 bool beginsWith(const std::wstring &text, const wchar_t *prefix) {
@@ -102,6 +124,157 @@ std::wstring utf8ToWide(const std::string &text) {
     return {};
   }
   return result;
+}
+
+bool isWithinBundle(const std::filesystem::path &folder) {
+  const auto bundlePath = pluginBundlePath().lexically_normal();
+  const auto normalizedFolder = folder.lexically_normal();
+  if (bundlePath.empty()) {
+    return false;
+  }
+  const auto relative = normalizedFolder.lexically_relative(bundlePath);
+  if (relative.empty()) {
+    return normalizedFolder == bundlePath;
+  }
+  return *relative.begin() != L"..";
+}
+
+std::string jsonEscape(const std::string &text) {
+  std::string result;
+  result.reserve(text.size() + 8);
+  for (const unsigned char character : text) {
+    switch (character) {
+      case '"':
+        result += "\\\"";
+        break;
+      case '\\':
+        result += "\\\\";
+        break;
+      case '\b':
+        result += "\\b";
+        break;
+      case '\f':
+        result += "\\f";
+        break;
+      case '\n':
+        result += "\\n";
+        break;
+      case '\r':
+        result += "\\r";
+        break;
+      case '\t':
+        result += "\\t";
+        break;
+      default:
+        if (character < 0x20) {
+          constexpr char hex[] = "0123456789abcdef";
+          result += "\\u00";
+          result += hex[(character >> 4) & 0xf];
+          result += hex[character & 0xf];
+        } else {
+          result += static_cast<char>(character);
+        }
+    }
+  }
+  return result;
+}
+
+bool isSupportedSampleFile(const std::filesystem::path &path) {
+  auto extension = path.extension().wstring();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](wchar_t character) {
+                   return static_cast<wchar_t>(std::towlower(character));
+                 });
+  return extension == L".wav" || extension == L".wave" ||
+         extension == L".aif" || extension == L".aiff" ||
+         extension == L".mp3" || extension == L".ogg" ||
+         extension == L".m4a" || extension == L".aac" ||
+         extension == L".flac";
+}
+
+std::filesystem::path loadSampleFolderSetting(bool &remembered) {
+  remembered = false;
+  const auto bundlePath = pluginBundlePath();
+  const auto settingsPath = sampleFolderSettingsPath();
+  if (!bundlePath.empty() && !settingsPath.empty()) {
+    std::ifstream file(settingsPath, std::ios::binary);
+    if (file) {
+      const std::string utf8Path((std::istreambuf_iterator<char>(file)),
+                                 std::istreambuf_iterator<char>());
+      const std::filesystem::path relative(utf8ToWide(utf8Path));
+      if (!relative.empty() && !relative.is_absolute()) {
+        const auto savedFolder = (bundlePath / relative).lexically_normal();
+        std::error_code statusError;
+        if (isWithinBundle(savedFolder) &&
+            std::filesystem::is_directory(savedFolder, statusError) &&
+            !statusError) {
+          remembered = true;
+          return savedFolder;
+        }
+      }
+    }
+  }
+
+  if (!bundlePath.empty()) {
+    for (const auto *candidate : {L"Samples", L"samples",
+                                  L"uzu-drumkit-main"}) {
+      const auto folder = bundlePath / candidate;
+      std::error_code statusError;
+      if (std::filesystem::is_directory(folder, statusError) && !statusError) {
+        remembered = true;
+        return folder;
+      }
+    }
+  }
+  return {};
+}
+
+bool saveSampleFolderSetting(const std::filesystem::path &folder) {
+  const auto settingsPath = sampleFolderSettingsPath();
+  const auto bundlePath = pluginBundlePath();
+  if (settingsPath.empty() || bundlePath.empty() || !isWithinBundle(folder)) {
+    return false;
+  }
+  const auto relative = folder.lexically_normal().lexically_relative(
+      bundlePath.lexically_normal());
+  const auto utf8Path = relative.generic_u8string();
+  std::ofstream file(settingsPath, std::ios::binary | std::ios::trunc);
+  if (!file) {
+    return false;
+  }
+  file.write(utf8Path.data(), static_cast<std::streamsize>(utf8Path.size()));
+  return file.good();
+}
+
+std::vector<std::string> listSampleFiles(const std::filesystem::path &root,
+                                         bool &truncated) {
+  std::vector<std::string> files;
+  truncated = false;
+  std::error_code error;
+  const auto options = std::filesystem::directory_options::skip_permission_denied;
+  std::filesystem::recursive_directory_iterator iterator(root, options, error);
+  const std::filesystem::recursive_directory_iterator end;
+  while (!error && iterator != end) {
+    std::error_code entryError;
+    if (iterator->is_regular_file(entryError) && !entryError &&
+        isSupportedSampleFile(iterator->path())) {
+      const auto relative = iterator->path().lexically_relative(root);
+      files.push_back(relative.generic_u8string());
+      if (files.size() >= kMaximumIndexedSampleFiles) {
+        truncated = true;
+        break;
+      }
+    }
+    iterator.increment(error);
+    if (error) {
+      error.clear();
+      if (iterator != end) {
+        iterator.increment(error);
+      }
+    }
+  }
+  std::sort(files.begin(), files.end());
+  return files;
 }
 
 }  // namespace
@@ -221,6 +394,20 @@ HRESULT StrudelEditorView::createController(
               return result;
             }
 
+            self->m_sampleFolderPath =
+                loadSampleFolderSetting(self->m_sampleFolderRemembered);
+            self->m_sampleFolderPortable =
+                !self->m_sampleFolderPath.empty() &&
+                isWithinBundle(self->m_sampleFolderPath);
+            if (!self->m_sampleFolderPath.empty()) {
+              result = self->mapSampleFolder(self->m_sampleFolderPath);
+              if (FAILED(result)) {
+                self->m_sampleFolderPath.clear();
+                self->m_sampleFolderPortable = false;
+                self->m_sampleFolderRemembered = false;
+              }
+            }
+
             auto eventSelf = Steinberg::IPtr<StrudelEditorView>(self);
             const auto messageHandler =
                 Callback<ICoreWebView2WebMessageReceivedEventHandler>(
@@ -275,6 +462,12 @@ HRESULT StrudelEditorView::handleWebMessage(
     CoTaskMemFree(rawString);
     if (message == L"request-editor-code") {
       return sendEditorCode();
+    }
+    if (message == L"request-sample-folder-index") {
+      return sendSampleFolderIndex();
+    }
+    if (message == L"choose-sample-folder") {
+      return selectSampleFolder();
     }
     constexpr wchar_t kEditorCodePrefix[] = L"editor-code:";
     if (beginsWith(message, kEditorCodePrefix)) {
@@ -331,6 +524,143 @@ HRESULT StrudelEditorView::sendEditorCode() {
   const std::wstring message =
       std::wstring(kEditorCodePrefix) + code;
   return m_webView->PostWebMessageAsString(message.c_str());
+}
+
+HRESULT StrudelEditorView::mapSampleFolder(
+    const std::filesystem::path &folder) {
+  if (!m_webView17) {
+    return E_POINTER;
+  }
+  m_webView17->ClearVirtualHostNameToFolderMapping(kSampleVirtualHostName);
+  if (folder.empty()) {
+    return S_OK;
+  }
+  return m_webView17->SetVirtualHostNameToFolderMapping(
+      kSampleVirtualHostName, folder.c_str(),
+      COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
+}
+
+HRESULT StrudelEditorView::sendSampleFolderIndex() {
+  if (!m_webView) {
+    return E_POINTER;
+  }
+
+  std::error_code statusError;
+  const bool selected = !m_sampleFolderPath.empty() &&
+                        std::filesystem::is_directory(m_sampleFolderPath,
+                                                      statusError) &&
+                        !statusError;
+  bool truncated = false;
+  const auto files =
+      selected ? listSampleFiles(m_sampleFolderPath, truncated)
+               : std::vector<std::string>{};
+  const auto folderName =
+      selected ? wideToUtf8(m_sampleFolderPath.filename().wstring())
+               : std::string{};
+  std::string json =
+      "{\"type\":\"sample-folder-index\",\"selected\":" +
+      std::string(selected ? "true" : "false") +
+      ",\"portable\":" +
+      std::string(selected && m_sampleFolderPortable ? "true" : "false") +
+      ",\"remembered\":" +
+      std::string(selected && m_sampleFolderRemembered ? "true" : "false") +
+      ",\"folder\":\"" + jsonEscape(folderName) +
+      "\",\"truncated\":" + (truncated ? "true" : "false") +
+      ",\"files\":[";
+  for (std::size_t index = 0; index < files.size(); ++index) {
+    if (index != 0) {
+      json += ',';
+    }
+    json += '"';
+    json += jsonEscape(files[index]);
+    json += '"';
+  }
+  json += "]}";
+  const auto wideJson = utf8ToWide(json);
+  return m_webView->PostWebMessageAsJson(wideJson.c_str());
+}
+
+HRESULT StrudelEditorView::selectSampleFolder() {
+  if (!m_webView || !m_webView17) {
+    return E_POINTER;
+  }
+
+  ComPtr<IFileOpenDialog> dialog;
+  HRESULT result =
+      CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                       IID_PPV_ARGS(&dialog));
+  if (FAILED(result)) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"sample-folder-error\",\"message\":\"Windows could not open the folder picker.\"}");
+    return result;
+  }
+
+  FILEOPENDIALOGOPTIONS options{};
+  result = dialog->GetOptions(&options);
+  if (FAILED(result)) {
+    return result;
+  }
+  result = dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM |
+                              FOS_PATHMUSTEXIST);
+  if (FAILED(result)) {
+    return result;
+  }
+  dialog->SetTitle(L"Choose a folder containing audio samples");
+
+  const auto bundlePath = pluginBundlePath();
+  if (!bundlePath.empty()) {
+    ComPtr<IShellItem> initialFolder;
+    if (SUCCEEDED(SHCreateItemFromParsingName(
+            bundlePath.c_str(), nullptr, IID_PPV_ARGS(&initialFolder)))) {
+      dialog->SetFolder(initialFolder.Get());
+    }
+  }
+
+  result = dialog->Show(static_cast<HWND>(systemWindow));
+  if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+    return S_OK;
+  }
+  if (FAILED(result)) {
+    return result;
+  }
+
+  ComPtr<IShellItem> selectedItem;
+  result = dialog->GetResult(&selectedItem);
+  if (FAILED(result)) {
+    return result;
+  }
+
+  PWSTR selectedPath = nullptr;
+  result = selectedItem->GetDisplayName(SIGDN_FILESYSPATH, &selectedPath);
+  if (FAILED(result) || selectedPath == nullptr) {
+    return FAILED(result) ? result : E_FAIL;
+  }
+  const std::filesystem::path folder(selectedPath);
+  CoTaskMemFree(selectedPath);
+  std::error_code statusError;
+  if (!std::filesystem::is_directory(folder, statusError) || statusError) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"sample-folder-error\",\"message\":\"The selected folder is not available.\"}");
+    return E_INVALIDARG;
+  }
+
+  result = mapSampleFolder(folder);
+  if (FAILED(result)) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"sample-folder-error\",\"message\":\"WebView2 could not access that folder.\"}");
+    return result;
+  }
+
+  m_sampleFolderPath = folder;
+  m_sampleFolderPortable = isWithinBundle(folder);
+  m_sampleFolderRemembered = false;
+  if (m_sampleFolderPortable) {
+    m_sampleFolderRemembered = saveSampleFolderSetting(folder);
+  } else {
+    std::error_code ignored;
+    std::filesystem::remove(sampleFolderSettingsPath(), ignored);
+  }
+  return sendSampleFolderIndex();
 }
 
 HRESULT StrudelEditorView::provideAudioBuffer() {

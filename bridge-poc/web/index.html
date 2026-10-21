@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Dexter U.S. Strudel v0.2.7</title>
+    <title>Dexter U.S. Strudel v0.2.8</title>
   </head>
   <body>
     <header class="toolbar">
@@ -58,6 +58,20 @@
             for its output buffers.
           </p>
         </div>
+        <section class="sample-library" aria-label="Local sample library">
+          <strong>Portable samples</strong>
+          <p id="sample-folder-status">
+            Looking for Samples or uzu-drumkit-main beside the VST3 bundle…
+          </p>
+          <button id="sample-folder-button" class="secondary-button" type="button">
+            Choose sample folder
+          </button>
+          <details>
+            <summary>Sample bank IDs</summary>
+            <ul id="sample-bank-list"></ul>
+          </details>
+          <p>For portability, keep the sample folder beside the bundle’s Contents folder.</p>
+        </section>
       </aside>
     </main>
     <script type="module" src="/src/main.js"></script>

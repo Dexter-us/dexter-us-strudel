@@ -1,4 +1,5 @@
 import {
+  samples,
   setAudioContext,
   setSuperdoughAudioController,
 } from "@strudel/webaudio";
@@ -14,6 +15,9 @@ const drumBuilderPanel = document.querySelector("#drum-builder-panel");
 const drumCodePreview = document.querySelector("#drum-code-preview");
 const insertDrumPatternButton = document.querySelector("#insert-drum-pattern");
 const drumGrooveMenu = document.querySelector("#drum-groove-menu");
+const sampleFolderButton = document.querySelector("#sample-folder-button");
+const sampleFolderStatus = document.querySelector("#sample-folder-status");
+const sampleBankList = document.querySelector("#sample-bank-list");
 const audioFormat = document.querySelector("#audio-format");
 const audioFrames = document.querySelector("#audio-frames");
 const editorMount = document.querySelector("#editor-mount");
@@ -52,6 +56,7 @@ let strudelMounted = false;
 let strudelEditor = null;
 let strudelRunning = false;
 let userChangedEditor = false;
+let localSampleBankIds = [];
 const localCodeKey = "dexter-us-strudel-editor-code-v1";
 
 function readLocalEditorCode() {
@@ -72,7 +77,7 @@ function writeLocalEditorCode(code) {
 
 let initialEditorCode = readLocalEditorCode();
 let runtimeLoadError = null;
-const strudelRuntimeReady = import("@strudel/repl").catch((error) => {
+const strudelRuntimeReady = import("./strudel-repl.js").catch((error) => {
   runtimeLoadError = error;
   return null;
 });
@@ -161,6 +166,19 @@ function saveEditorCode(code) {
 
 function generateDrumCode() {
   const groove = drumGrooves[selectedDrumGroove];
+  const localDrums = {
+    bd: findLocalDrumBank(["bd", "kick", "kickdrum", "bassdrum"], "bd"),
+    sd: findLocalDrumBank(["sd", "sn", "snare", "snaredrum"], "sd"),
+    hh: findLocalDrumBank(
+      ["hh", "ch", "closedhat", "hihat", "hat", "oh", "openhat"],
+      "hh",
+    ),
+  };
+  const useLocalBank = (pattern) =>
+    pattern.replace(/\b(bd|sd|hh)\b/g, (sample) => localDrums[sample]);
+  const kickPattern = useLocalBank(groove.kick);
+  const snarePattern = useLocalBank(groove.snare);
+  const hatPattern = useLocalBank(groove.hats);
   const values = Object.fromEntries(
     drumControls.map(([name, input]) => [
       name,
@@ -176,10 +194,18 @@ const hatLevel = ${values.hatLevel}
 setcps(cycleSpeed)
 
 stack(
-  s("${groove.kick}").gain(kickLevel),
-  s("${groove.snare}").gain(snareLevel),
-  s("${groove.hats}").gain(hatLevel)
+  s("${kickPattern}").gain(kickLevel),
+  s("${snarePattern}").gain(snareLevel),
+  s("${hatPattern}").gain(hatLevel)
 )`;
+}
+
+function findLocalDrumBank(aliases, fallback) {
+  return (
+    localSampleBankIds.find((bank) =>
+      aliases.some((alias) => bank.endsWith(`_${alias}`)),
+    ) ?? fallback
+  );
 }
 
 function updateDrumBuilder() {
@@ -187,6 +213,101 @@ function updateDrumBuilder() {
     output.value = Number(input.value).toFixed(2);
   }
   drumCodePreview.textContent = generateDrumCode();
+}
+
+function sampleSlug(value) {
+  return (
+    value
+      .normalize("NFKD")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "samples"
+  );
+}
+
+async function registerLocalSampleFolder(data) {
+  if (!data.selected) {
+    localSampleBankIds = [];
+    sampleFolderStatus.textContent =
+      "No sample folder found beside the VST3 bundle.";
+    sampleBankList.replaceChildren();
+    updateDrumBuilder();
+    return;
+  }
+
+  const filePaths = Array.isArray(data.files) ? data.files : [];
+  const packSlug = sampleSlug(data.folder || "samples");
+  const sampleMap = Object.create(null);
+
+  for (const filePath of filePaths) {
+    if (typeof filePath !== "string") continue;
+    const parts = filePath
+      .split(/[\\/]/)
+      .filter((part) => part && part !== "." && part !== "..");
+    if (!parts.length) continue;
+
+    const filename = parts.at(-1);
+    const stem = filename.replace(/\.[^.]+$/, "");
+    const parent = parts.length > 1 ? parts.slice(0, -1).join("_") : stem;
+    const bank = `local_${packSlug}_${sampleSlug(parent)}`;
+    const encodedPath = parts.map(encodeURIComponent).join("/");
+    (sampleMap[bank] ??= []).push(
+      `https://strudel-samples.local/${encodedPath}`,
+    );
+  }
+
+  for (const [sample, aliases] of Object.entries({
+    bd: ["bd", "kick", "kickdrum", "bassdrum"],
+    sd: ["sd", "sn", "snare", "snaredrum"],
+    hh: ["hh", "ch", "closedhat", "hihat", "hat", "oh", "openhat"],
+  })) {
+    const localBank = Object.keys(sampleMap).find((bank) =>
+      aliases.some((alias) => bank.endsWith(`_${alias}`)),
+    );
+    if (localBank) sampleMap[sample] = sampleMap[localBank];
+  }
+
+  const bankIds = Object.keys(sampleMap).sort();
+  if (!bankIds.length) {
+    localSampleBankIds = [];
+    sampleFolderStatus.textContent =
+      `Found “${data.folder}”, but no supported audio files.`;
+    sampleBankList.replaceChildren();
+    updateDrumBuilder();
+    return;
+  }
+
+  try {
+    await samples(sampleMap);
+  } catch (error) {
+    sampleFolderStatus.textContent =
+      error instanceof Error
+        ? `Could not register local samples: ${error.message}`
+        : "Could not register local samples.";
+    return;
+  }
+
+  localSampleBankIds = bankIds;
+  let portability = "inside the VST3 folder; it will travel with the plugin";
+  if (!data.portable) {
+    portability =
+      "outside the VST3 folder; move it beside Contents to make it portable";
+  } else if (!data.remembered) {
+    portability =
+      "portable folder selected; it could not save its relative path, so use Samples or uzu-drumkit-main for automatic discovery";
+  }
+  sampleFolderStatus.textContent =
+    `${filePaths.length}${data.truncated ? "+" : ""} audio files · ${bankIds.length} sample banks · ${portability}`;
+
+  sampleBankList.replaceChildren();
+  for (const bank of bankIds) {
+    const item = document.createElement("li");
+    const code = document.createElement("code");
+    code.textContent = bank;
+    item.append(code);
+    sampleBankList.append(item);
+  }
+  updateDrumBuilder();
 }
 
 drumBuilderToggle.addEventListener("click", () => {
@@ -260,6 +381,16 @@ document.addEventListener("keydown", (event) => {
 for (const [, input] of drumControls) {
   input.addEventListener("input", updateDrumBuilder);
 }
+
+sampleFolderButton.addEventListener("click", () => {
+  const webview = getWebViewBridge();
+  if (!webview) {
+    sampleFolderStatus.textContent =
+      "Choose a sample folder from the VST3 editor.";
+    return;
+  }
+  webview.postMessage("choose-sample-folder");
+});
 
 insertDrumPatternButton.addEventListener("click", () => {
   if (!strudelEditor || !strudelMounted) {
@@ -405,6 +536,15 @@ connectButton.addEventListener("click", () => {
 const webview = getWebViewBridge();
 if (webview) {
   webview.addEventListener("message", (event) => {
+    if (event.data?.type === "sample-folder-index") {
+      void registerLocalSampleFolder(event.data);
+      return;
+    }
+    if (event.data?.type === "sample-folder-error") {
+      sampleFolderStatus.textContent =
+        event.data.message ?? "Could not open the sample folder.";
+      return;
+    }
     if (
       typeof event.data === "string" &&
       event.data.startsWith("editor-code-state:")
@@ -435,6 +575,7 @@ if (webview) {
   });
   showStatus("WebView2 host detected — requesting shared audio buffer");
   webview.postMessage("request-editor-code");
+  webview.postMessage("request-sample-folder-index");
   webview.postMessage({ type: "request-audio-buffer" });
 } else {
   showStatus("Browser preview only — native audio bridge unavailable");

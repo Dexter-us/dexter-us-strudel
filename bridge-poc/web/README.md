@@ -1,9 +1,9 @@
 # Dexter U.S. Strudel VST3
 
-This page uses Strudel's published `@strudel/repl` and `@strudel/webaudio`
-packages. It leaves Strudel's pattern language, synths, samples, buses, and
-effects intact, and redirects only the final Superdough output into an
-`AudioWorkletNode`.
+This page uses Strudel's published packages and a small local REPL wrapper. It
+keeps the Strudel pattern language, synths, buses, and effects, and redirects
+only the final Superdough output into an `AudioWorkletNode`. Startup registers
+the built-in synths but does not fetch sample maps or soundfonts.
 
 The WebView2 host is implemented by the Windows VST3 editor in
 `../native/vst3/StrudelEditorView.cpp`:
@@ -40,9 +40,27 @@ The editor also writes code to the persistent WebView2 profile on each edit, so
 closing and reopening the editor window in the same instance does not depend on
 the host saving a bank.
 
-The standard Strudel sample maps are loaded from their upstream repositories at
-startup; individual audio samples are fetched on demand. Persistent sample
-caching is not implemented yet.
+Sample audio can be loaded from a folder beside the VST3 bundle. The default
+portable layout is:
+
+```text
+DexterUSStrudel.vst3/
+├── Contents/
+└── uzu-drumkit-main/
+```
+
+The plugin auto-discovers `Samples`, `samples`, or `uzu-drumkit-main` beside
+`Contents`. Choose Sample Folder can also select another folder. If that folder
+is inside the VST3 bundle, its relative path is saved beside `Contents`, so
+moving the whole folder keeps the library attached. An external folder works
+only for the current session; move it into the bundle for a portable setup.
+The plugin indexes up to 10,000 WAV, AIFF, MP3, OGG, M4A, AAC, or FLAC files.
+It does not copy sample audio into the VST3 or WebView profile.
+
+Sample banks are exposed as IDs such as `local_uzu_drumkit_main_bd`; use them
+with Strudel's normal `s("...")` pattern syntax. The Drum Builder automatically
+uses local `bd`, `sd`/`sn`, and `hh`/hat banks when present. Optional online
+sample maps are not initialized at startup.
 
 The editor includes a floating Drum Builder popover for a kick/snare/hi-hat
 pattern. Left-click the toolbar button to open slider controls; right-click the
@@ -51,8 +69,8 @@ numeric constants in the Strudel code. Insert/Update replaces the editor
 contents; playback still starts only when Run is pressed.
 
 Hydra's `hydra-synth` runtime is copied from the pinned npm dependency into the
-VST3's web assets and loaded locally by Strudel. This removes Hydra's runtime
-request to `unpkg.com`; Strudel's sample maps and sample audio still load online.
+VST3's web assets and loaded locally by Strudel. The build includes the
+Strudel AGPL and Hydra license notices under `vendor/`.
 
 Run `npm ci && npm run build` from this directory to build the page alone. The
 Windows target at `../native/vst3` packages the page into the VST3 bundle.

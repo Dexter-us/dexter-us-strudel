@@ -7,7 +7,11 @@ export default defineConfig({
       name: "strudel-hydra-offline-runtime",
       enforce: "pre",
       transform(source, id) {
-        if (!id.replaceAll("\\", "/").includes("/@strudel/repl/dist/hydra-")) {
+        const normalizedId = id.replaceAll("\\", "/");
+        if (
+          !normalizedId.includes("/@strudel/repl/dist/hydra-") &&
+          !normalizedId.includes("/@strudel/hydra/dist/index.mjs")
+        ) {
           return null;
         }
         return source.replaceAll(
