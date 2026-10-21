@@ -13,6 +13,7 @@ const drumBuilderToggle = document.querySelector("#drum-builder-toggle");
 const drumBuilderPanel = document.querySelector("#drum-builder-panel");
 const drumCodePreview = document.querySelector("#drum-code-preview");
 const insertDrumPatternButton = document.querySelector("#insert-drum-pattern");
+const drumGrooveMenu = document.querySelector("#drum-groove-menu");
 const audioFormat = document.querySelector("#audio-format");
 const audioFrames = document.querySelector("#audio-frames");
 const editorMount = document.querySelector("#editor-mount");
@@ -23,6 +24,27 @@ const drumControls = [
   ["snareLevel", document.querySelector("#snare-level"), document.querySelector("#snare-level-value")],
   ["hatLevel", document.querySelector("#hat-level"), document.querySelector("#hat-level-value")],
 ];
+const drumGrooves = {
+  fourOnFloor: {
+    label: "Four-on-the-floor",
+    kick: "bd*4",
+    snare: "~ sd ~ sd",
+    hats: "hh*8",
+  },
+  rock: {
+    label: "Rock groove",
+    kick: "bd ~ ~ bd",
+    snare: "~ sd ~ sd",
+    hats: "hh*8",
+  },
+  breakbeat: {
+    label: "Breakbeat",
+    kick: "bd ~ ~ bd ~ ~ bd ~",
+    snare: "~ ~ sd ~ ~ sd ~ ~",
+    hats: "hh*8",
+  },
+};
+let selectedDrumGroove = "fourOnFloor";
 
 let bridgeNode = null;
 let lastWriteFrame = 0;
@@ -138,13 +160,15 @@ function saveEditorCode(code) {
 }
 
 function generateDrumCode() {
+  const groove = drumGrooves[selectedDrumGroove];
   const values = Object.fromEntries(
     drumControls.map(([name, input]) => [
       name,
       Number(input.value).toFixed(2),
     ]),
   );
-  return `const cycleSpeed = ${values.cycleSpeed}
+  return `// ${groove.label}
+const cycleSpeed = ${values.cycleSpeed}
 const kickLevel = ${values.kickLevel}
 const snareLevel = ${values.snareLevel}
 const hatLevel = ${values.hatLevel}
@@ -152,9 +176,9 @@ const hatLevel = ${values.hatLevel}
 setcps(cycleSpeed)
 
 stack(
-  s("bd ~ bd ~").gain(kickLevel),
-  s("~ sd ~ sd").gain(snareLevel),
-  s("hh*8").gain(hatLevel)
+  s("${groove.kick}").gain(kickLevel),
+  s("${groove.snare}").gain(snareLevel),
+  s("${groove.hats}").gain(hatLevel)
 )`;
 }
 
@@ -169,6 +193,68 @@ drumBuilderToggle.addEventListener("click", () => {
   const isOpen = drumBuilderPanel.hidden;
   drumBuilderPanel.hidden = !isOpen;
   drumBuilderToggle.setAttribute("aria-expanded", String(isOpen));
+});
+
+function openDrumGrooveMenu(event) {
+  event.preventDefault();
+  drumGrooveMenu.hidden = false;
+  const menuWidth = 220;
+  const menuHeight = 150;
+  drumGrooveMenu.style.left = `${Math.max(
+    8,
+    Math.min(event.clientX, window.innerWidth - menuWidth - 8),
+  )}px`;
+  drumGrooveMenu.style.top = `${Math.max(
+    8,
+    Math.min(event.clientY, window.innerHeight - menuHeight - 8),
+  )}px`;
+  drumGrooveMenu.querySelector("button")?.focus();
+}
+
+drumBuilderToggle.addEventListener("contextmenu", openDrumGrooveMenu);
+editorMount.addEventListener("contextmenu", openDrumGrooveMenu, true);
+
+drumGrooveMenu.addEventListener("click", (event) => {
+  const choice = event.target.closest("[data-groove]");
+  if (!choice) return;
+  selectedDrumGroove = choice.dataset.groove;
+  updateDrumBuilder();
+  drumBuilderPanel.hidden = false;
+  drumBuilderToggle.setAttribute("aria-expanded", "true");
+  drumGrooveMenu.hidden = true;
+  drumBuilderToggle.focus();
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (
+    !drumBuilderPanel.hidden &&
+    !drumBuilderPanel.contains(event.target) &&
+    event.target !== drumBuilderToggle
+  ) {
+    drumBuilderPanel.hidden = true;
+    drumBuilderToggle.setAttribute("aria-expanded", "false");
+  }
+  if (
+    !drumGrooveMenu.hidden &&
+    !drumGrooveMenu.contains(event.target) &&
+    !drumBuilderToggle.contains(event.target)
+  ) {
+    drumGrooveMenu.hidden = true;
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    if (!drumBuilderPanel.hidden) {
+      drumBuilderPanel.hidden = true;
+      drumBuilderToggle.setAttribute("aria-expanded", "false");
+      drumBuilderToggle.focus();
+    }
+    if (!drumGrooveMenu.hidden) {
+      drumGrooveMenu.hidden = true;
+      drumBuilderToggle.focus();
+    }
+  }
 });
 
 for (const [, input] of drumControls) {

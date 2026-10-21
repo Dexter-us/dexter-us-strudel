@@ -224,7 +224,7 @@ BEGIN_FACTORY_DEF("Dexter U.S.",
 
 DEF_CLASS2(INLINE_UID(0xD3E7A5B1, 0x4C2A6F80, 0xAB10CD23, 0x9F775E41),
             PClassInfo::kManyInstances, kVstAudioEffectClass,
-            "Dexter U.S. Strudel", 0, "Instrument|Synth", "0.2.5",
+            "Dexter U.S. Strudel", 0, "Instrument|Synth", "0.2.6",
            kVstVersionString, StrudelVst3Processor::createInstance)
 
 END_FACTORY

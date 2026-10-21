@@ -44,10 +44,11 @@ The standard Strudel sample maps are loaded from their upstream repositories at
 startup; individual audio samples are fetched on demand. Persistent sample
 caching is not implemented yet.
 
-The editor includes a Drum Builder for a kick/snare/hi-hat pattern. Its cycle
-speed and level sliders generate named numeric constants in the Strudel code.
-Insert/Update replaces the editor contents; playback still starts only when Run
-is pressed.
+The editor includes a floating Drum Builder popover for a kick/snare/hi-hat
+pattern. Left-click the toolbar button to open slider controls; right-click the
+editor to choose a groove. Its cycle speed and level sliders generate named
+numeric constants in the Strudel code. Insert/Update replaces the editor
+contents; playback still starts only when Run is pressed.
 
 Run `npm ci && npm run build` from this directory to build the page alone. The
 Windows target at `../native/vst3` packages the page into the VST3 bundle.
