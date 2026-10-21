@@ -23,12 +23,16 @@ async function loadUserPrebake() {
   }
 
   if (typeof window.__dexterPortablePrebakeSource === "string") {
+    window.__dexterStrudelPrebakeSourceKind = "portable";
     return window.__dexterPortablePrebakeSource;
   }
 
   try {
     const saved = window.localStorage.getItem(userPrebakeStorageKey);
-    if (saved !== null) return saved;
+    if (saved !== null) {
+      window.__dexterStrudelPrebakeSourceKind = "profile";
+      return saved;
+    }
   } catch {
     // Fall back to the bundled file when browser storage is disabled.
   }
@@ -37,10 +41,14 @@ async function loadUserPrebake() {
     const response = await fetch(new URL("/prebake.strudel", window.location.href), {
       cache: "no-store",
     });
-    if (response.ok) return await response.text();
+    if (response.ok) {
+      window.__dexterStrudelPrebakeSourceKind = "packaged";
+      return await response.text();
+    }
   } catch (error) {
     console.warn("Could not load the bundled Prebake file", error);
   }
+  window.__dexterStrudelPrebakeSourceKind = "packaged";
   return "";
 }
 

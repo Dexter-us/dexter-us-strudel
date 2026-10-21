@@ -42,6 +42,9 @@ class StrudelEditorView final : public CPluginView {
   HRESULT savePortablePrebake(const std::string &source);
   HRESULT resetPortablePrebake();
   HRESULT openPortableDataFolder();
+  HRESULT choosePrebakeFile();
+  HRESULT savePatternFile(const std::string &source);
+  HRESULT loadPatternFile();
   HRESULT selectSampleFolder();
   HRESULT sendSampleFolderIndex();
   HRESULT mapSampleFolder(const std::filesystem::path &folder);

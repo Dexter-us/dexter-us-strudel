@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Dexter U.S. Strudel v0.2.12</title>
+    <title>Dexter U.S. Strudel v0.2.13</title>
   </head>
   <body>
     <header class="toolbar">
@@ -12,9 +12,27 @@
       <div class="bridge-status" id="bridge-status" role="status">Waiting for native bridge</div>
       <button id="drum-builder-toggle" class="secondary-button" type="button" aria-expanded="false" aria-haspopup="menu" aria-controls="drum-groove-menu">Drum Builder</button>
       <button id="drum-tab-toggle" class="secondary-button" type="button" aria-expanded="false" aria-controls="drum-tab-panel">Drum Tab</button>
+      <button id="file-toggle" class="secondary-button" type="button" aria-expanded="false" aria-controls="file-panel">Files</button>
       <button id="settings-toggle" class="secondary-button" type="button" aria-expanded="false" aria-controls="settings-panel">Settings</button>
-      <button id="run-strudel" type="button" disabled>Run</button>
+      <button id="run-strudel" type="button" disabled title="Starts with a short fade-in; while playing, updates the pattern without stopping Strudel's clock.">Run / Update</button>
+      <button id="stop-strudel" class="secondary-button" type="button" disabled title="Fades the VST3 output down before stopping the pattern.">Stop</button>
       <button id="connect-bridge" type="button">Connect audio bridge</button>
+      <section id="file-panel" class="settings-panel file-panel" hidden aria-label="Pattern files">
+        <div class="settings-heading">
+          <div>
+            <strong>Pattern Files</strong>
+            <p>Open and save Strudel code. Dialogs start in the portable Presets folder.</p>
+          </div>
+          <button id="file-close" class="secondary-button" type="button" aria-label="Close files">Close</button>
+        </div>
+        <div class="settings-actions">
+          <button id="load-pattern-file" class="secondary-button" type="button">Load pattern…</button>
+          <button id="save-pattern-file" type="button">Save pattern as…</button>
+        </div>
+        <button id="file-open-data" class="secondary-button" type="button">Open portable folder</button>
+        <span id="file-folder-status" class="settings-note" role="status">Locating portable folder…</span>
+        <span id="file-status" class="settings-note" role="status">Patterns are saved as .strudel files.</span>
+      </section>
       <section id="drum-builder-panel" class="drum-builder" hidden aria-label="Drum pattern builder">
         <strong>Drum Builder</strong>
         <p>Adjust the levels, then insert the generated Strudel code.</p>
@@ -123,19 +141,17 @@ O: ----|----|----|---x</textarea>
         <section class="prebake-settings" aria-label="Portable Prebake">
           <strong>Portable Prebake</strong>
           <p>
-            This code loads before each Strudel evaluation. Assign helpers to
-            <code>globalThis</code> to make them available in the editor.
-            Save it beside the VST3 so it travels with a portable copy.
+            This is reusable helper code, not your current pattern. It loads
+            before Strudel starts. Use Files to save or load patterns.
           </p>
           <textarea id="prebake-source" spellcheck="false" aria-label="Prebake code"></textarea>
-          <input id="prebake-import-file" type="file" accept=".strudel,.js,.txt,text/plain" hidden />
           <div class="settings-actions">
-            <button id="prebake-import" class="secondary-button" type="button">Import file</button>
-            <button id="prebake-save" type="button">Save to portable folder</button>
+            <button id="prebake-import" class="secondary-button" type="button">Load Prebake file…</button>
+            <button id="prebake-save" type="button">Save Prebake helpers</button>
           </div>
           <div class="settings-actions">
             <button id="portable-data-open" class="secondary-button" type="button">Open data folder</button>
-            <button id="prebake-reset" class="secondary-button" type="button">Use bundled file</button>
+            <button id="prebake-reset" class="secondary-button" type="button">Reset to packaged default</button>
           </div>
           <span id="portable-data-status" class="settings-note" role="status">Locating portable data folder…</span>
           <span id="prebake-status" class="settings-note" role="status">Loading bundled Prebake…</span>

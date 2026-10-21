@@ -17,6 +17,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <system_error>
@@ -126,6 +127,18 @@ std::filesystem::path userDataDirectory(bool &portable) {
   const auto fallback = webViewPath.parent_path() / L"UserData";
   return prepareUserDataDirectory(fallback) ? fallback
                                              : std::filesystem::path{};
+}
+
+void setInitialFileDialogFolder(IFileDialog *dialog,
+                                const std::filesystem::path &folder) {
+  if (dialog == nullptr || folder.empty()) {
+    return;
+  }
+  ComPtr<IShellItem> initialFolder;
+  if (SUCCEEDED(SHCreateItemFromParsingName(
+          folder.c_str(), nullptr, IID_PPV_ARGS(&initialFolder)))) {
+    (void)dialog->SetFolder(initialFolder.Get());
+  }
 }
 
 std::filesystem::path sampleFolderSettingsPath() {
@@ -530,11 +543,17 @@ HRESULT StrudelEditorView::handleWebMessage(
     if (message == L"request-portable-prebake") {
       return sendPortablePrebake();
     }
+    if (message == L"choose-prebake-file") {
+      return choosePrebakeFile();
+    }
     if (message == L"reset-portable-prebake") {
       return resetPortablePrebake();
     }
     if (message == L"open-portable-data-folder") {
       return openPortableDataFolder();
+    }
+    if (message == L"load-pattern-file") {
+      return loadPatternFile();
     }
     constexpr wchar_t kSavePortablePrebakePrefix[] =
         L"save-portable-prebake:";
@@ -545,6 +564,14 @@ HRESULT StrudelEditorView::handleWebMessage(
           1;
       const auto source = wideToUtf8(message.substr(prefixLength));
       return savePortablePrebake(source);
+    }
+    constexpr wchar_t kSavePatternFilePrefix[] = L"save-pattern-file:";
+    if (beginsWith(message, kSavePatternFilePrefix)) {
+      const auto prefixLength =
+          sizeof(kSavePatternFilePrefix) / sizeof(kSavePatternFilePrefix[0]) -
+          1;
+      const auto source = wideToUtf8(message.substr(prefixLength));
+      return savePatternFile(source);
     }
     constexpr wchar_t kWebViewBackgroundAlphaPrefix[] =
         L"webview-background-alpha:";
@@ -756,6 +783,290 @@ HRESULT StrudelEditorView::openPortableDataFolder() {
           ? L"{\"type\":\"portable-data-folder-opened\",\"success\":true}"
           : L"{\"type\":\"portable-data-folder-opened\",\"success\":false}");
   return opened ? S_OK : E_FAIL;
+}
+
+HRESULT StrudelEditorView::choosePrebakeFile() {
+  if (!m_webView) {
+    return E_POINTER;
+  }
+  if (m_userDataPath.empty()) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"portable-prebake-import-error\",\"message\":\"No writable portable data folder is available.\"}");
+    return E_ACCESSDENIED;
+  }
+  ComPtr<IFileOpenDialog> dialog;
+  HRESULT result =
+      CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                       IID_PPV_ARGS(&dialog));
+  if (FAILED(result)) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"portable-prebake-import-error\",\"message\":\"Windows could not open the Prebake file picker.\"}");
+    return result;
+  }
+
+  FILEOPENDIALOGOPTIONS options{};
+  result = dialog->GetOptions(&options);
+  if (SUCCEEDED(result)) {
+    result = dialog->SetOptions(options | FOS_FORCEFILESYSTEM |
+                                FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
+  }
+  if (FAILED(result)) {
+    return result;
+  }
+  const COMDLG_FILTERSPEC filters[] = {
+      {L"Strudel Prebake (*.strudel)", L"*.strudel"},
+      {L"All files (*.*)", L"*.*"},
+  };
+  dialog->SetFileTypes(static_cast<UINT>(std::size(filters)), filters);
+  dialog->SetFileTypeIndex(1);
+  dialog->SetDefaultExtension(L"strudel");
+  dialog->SetTitle(L"Load a Prebake file");
+  setInitialFileDialogFolder(
+      dialog.Get(), m_userDataPath / L"Prebake");
+
+  result = dialog->Show(static_cast<HWND>(systemWindow));
+  if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+    return m_webView->PostWebMessageAsString(
+        L"portable-prebake-cancelled");
+  }
+  if (FAILED(result)) {
+    return result;
+  }
+
+  ComPtr<IShellItem> selectedItem;
+  result = dialog->GetResult(&selectedItem);
+  if (FAILED(result)) {
+    return result;
+  }
+  PWSTR selectedPath = nullptr;
+  result = selectedItem->GetDisplayName(SIGDN_FILESYSPATH, &selectedPath);
+  if (FAILED(result) || selectedPath == nullptr) {
+    return FAILED(result) ? result : E_FAIL;
+  }
+  const std::filesystem::path path(selectedPath);
+  CoTaskMemFree(selectedPath);
+
+  std::ifstream file(path, std::ios::binary);
+  constexpr std::size_t kMaximumPrebakeBytes = 2 * 1024 * 1024;
+  file.seekg(0, std::ios::end);
+  const auto fileSize = static_cast<std::streamoff>(file.tellg());
+  if (!file || fileSize < 0 ||
+      static_cast<std::uint64_t>(fileSize) > kMaximumPrebakeBytes) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"portable-prebake-import-error\",\"message\":\"Could not read that file, or it is larger than 2 MB.\"}");
+    return E_FAIL;
+  }
+  file.seekg(0, std::ios::beg);
+  std::string contents(static_cast<std::size_t>(fileSize), '\0');
+  if (!contents.empty()) {
+    file.read(contents.data(), static_cast<std::streamsize>(contents.size()));
+    if (!file.good()) {
+      m_webView->PostWebMessageAsJson(
+          L"{\"type\":\"portable-prebake-import-error\",\"message\":\"Could not read that Prebake file.\"}");
+      return E_FAIL;
+    }
+  }
+  const auto wideContents = utf8ToWide(contents);
+  if (!contents.empty() && wideContents.empty()) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"portable-prebake-import-error\",\"message\":\"The selected file is not valid UTF-8.\"}");
+    return E_INVALIDARG;
+  }
+  const std::wstring message =
+      std::wstring(L"portable-prebake-imported:") + wideContents;
+  return m_webView->PostWebMessageAsString(message.c_str());
+}
+
+HRESULT StrudelEditorView::savePatternFile(const std::string &source) {
+  if (!m_webView) {
+    return E_POINTER;
+  }
+  if (m_userDataPath.empty()) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"pattern-file-error\",\"message\":\"No writable portable data folder is available.\"}");
+    return E_ACCESSDENIED;
+  }
+  constexpr std::size_t kMaximumPatternBytes = 4 * 1024 * 1024;
+  if (source.size() > kMaximumPatternBytes) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"pattern-file-error\",\"message\":\"Pattern files are limited to 4 MB.\"}");
+    return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+  }
+
+  ComPtr<IFileSaveDialog> dialog;
+  HRESULT result =
+      CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER,
+                       IID_PPV_ARGS(&dialog));
+  if (FAILED(result)) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"pattern-file-error\",\"message\":\"Windows could not open the Save Pattern dialog.\"}");
+    return result;
+  }
+
+  FILEOPENDIALOGOPTIONS options{};
+  result = dialog->GetOptions(&options);
+  if (SUCCEEDED(result)) {
+    result = dialog->SetOptions(options | FOS_FORCEFILESYSTEM |
+                                FOS_PATHMUSTEXIST | FOS_OVERWRITEPROMPT);
+  }
+  if (FAILED(result)) {
+    return result;
+  }
+  const COMDLG_FILTERSPEC filter{L"Strudel pattern (*.strudel)", L"*.strudel"};
+  dialog->SetFileTypes(1, &filter);
+  dialog->SetFileTypeIndex(1);
+  dialog->SetDefaultExtension(L"strudel");
+  dialog->SetFileName(L"pattern.strudel");
+  dialog->SetTitle(L"Save pattern to a portable file");
+  setInitialFileDialogFolder(
+      dialog.Get(), m_userDataPath / L"Presets");
+
+  result = dialog->Show(static_cast<HWND>(systemWindow));
+  if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+    return m_webView->PostWebMessageAsString(L"pattern-file-cancelled");
+  }
+  if (FAILED(result)) {
+    return result;
+  }
+
+  ComPtr<IShellItem> selectedItem;
+  result = dialog->GetResult(&selectedItem);
+  if (FAILED(result)) {
+    return result;
+  }
+  PWSTR selectedPath = nullptr;
+  result = selectedItem->GetDisplayName(SIGDN_FILESYSPATH, &selectedPath);
+  if (FAILED(result) || selectedPath == nullptr) {
+    return FAILED(result) ? result : E_FAIL;
+  }
+  const std::filesystem::path path(selectedPath);
+  CoTaskMemFree(selectedPath);
+
+  auto temporaryPath = path;
+  temporaryPath += L".tmp";
+  {
+    std::ofstream file(temporaryPath, std::ios::binary | std::ios::trunc);
+    if (!file) {
+      m_webView->PostWebMessageAsJson(
+          L"{\"type\":\"pattern-file-error\",\"message\":\"Could not write to the selected folder.\"}");
+      return E_ACCESSDENIED;
+    }
+    file.write(source.data(), static_cast<std::streamsize>(source.size()));
+    file.flush();
+    if (!file.good()) {
+      std::error_code ignored;
+      std::filesystem::remove(temporaryPath, ignored);
+      m_webView->PostWebMessageAsJson(
+          L"{\"type\":\"pattern-file-error\",\"message\":\"Could not finish saving the pattern file.\"}");
+      return HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
+    }
+  }
+  if (!MoveFileExW(temporaryPath.c_str(), path.c_str(),
+                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    const auto moveError = HRESULT_FROM_WIN32(GetLastError());
+    std::error_code ignored;
+    std::filesystem::remove(temporaryPath, ignored);
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"pattern-file-error\",\"message\":\"Could not finalize the saved pattern file.\"}");
+    return moveError;
+  }
+
+  const auto name = jsonEscape(wideToUtf8(path.filename().wstring()));
+  const std::string json =
+      "{\"type\":\"pattern-file-saved\",\"name\":\"" + name + "\"}";
+  const auto wideJson = utf8ToWide(json);
+  return m_webView->PostWebMessageAsJson(wideJson.c_str());
+}
+
+HRESULT StrudelEditorView::loadPatternFile() {
+  if (!m_webView) {
+    return E_POINTER;
+  }
+  if (m_userDataPath.empty()) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"pattern-file-error\",\"message\":\"No writable portable data folder is available.\"}");
+    return E_ACCESSDENIED;
+  }
+  ComPtr<IFileOpenDialog> dialog;
+  HRESULT result =
+      CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                       IID_PPV_ARGS(&dialog));
+  if (FAILED(result)) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"pattern-file-error\",\"message\":\"Windows could not open the Load Pattern dialog.\"}");
+    return result;
+  }
+
+  FILEOPENDIALOGOPTIONS options{};
+  result = dialog->GetOptions(&options);
+  if (SUCCEEDED(result)) {
+    result = dialog->SetOptions(options | FOS_FORCEFILESYSTEM |
+                                FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
+  }
+  if (FAILED(result)) {
+    return result;
+  }
+  const COMDLG_FILTERSPEC filters[] = {
+      {L"Strudel patterns (*.strudel)", L"*.strudel"},
+      {L"All files (*.*)", L"*.*"},
+  };
+  dialog->SetFileTypes(static_cast<UINT>(std::size(filters)), filters);
+  dialog->SetFileTypeIndex(1);
+  dialog->SetTitle(L"Load a Strudel pattern");
+  setInitialFileDialogFolder(
+      dialog.Get(), m_userDataPath / L"Presets");
+
+  result = dialog->Show(static_cast<HWND>(systemWindow));
+  if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+    return m_webView->PostWebMessageAsString(L"pattern-file-cancelled");
+  }
+  if (FAILED(result)) {
+    return result;
+  }
+
+  ComPtr<IShellItem> selectedItem;
+  result = dialog->GetResult(&selectedItem);
+  if (FAILED(result)) {
+    return result;
+  }
+  PWSTR selectedPath = nullptr;
+  result = selectedItem->GetDisplayName(SIGDN_FILESYSPATH, &selectedPath);
+  if (FAILED(result) || selectedPath == nullptr) {
+    return FAILED(result) ? result : E_FAIL;
+  }
+  const std::filesystem::path path(selectedPath);
+  CoTaskMemFree(selectedPath);
+
+  std::ifstream file(path, std::ios::binary);
+  constexpr std::size_t kMaximumPatternBytes = 4 * 1024 * 1024;
+  file.seekg(0, std::ios::end);
+  const auto fileSize = static_cast<std::streamoff>(file.tellg());
+  if (!file || fileSize < 0 ||
+      static_cast<std::uint64_t>(fileSize) > kMaximumPatternBytes) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"pattern-file-error\",\"message\":\"Could not read that file, or it is larger than 4 MB.\"}");
+    return E_FAIL;
+  }
+  file.seekg(0, std::ios::beg);
+  std::string contents(static_cast<std::size_t>(fileSize), '\0');
+  if (!contents.empty()) {
+    file.read(contents.data(), static_cast<std::streamsize>(contents.size()));
+    if (!file.good()) {
+      m_webView->PostWebMessageAsJson(
+          L"{\"type\":\"pattern-file-error\",\"message\":\"Could not read that pattern file.\"}");
+      return E_FAIL;
+    }
+  }
+  const auto wideContents = utf8ToWide(contents);
+  if (!contents.empty() && wideContents.empty()) {
+    m_webView->PostWebMessageAsJson(
+        L"{\"type\":\"pattern-file-error\",\"message\":\"The selected file is not valid UTF-8.\"}");
+    return E_INVALIDARG;
+  }
+  const auto name = utf8ToWide(wideToUtf8(path.filename().wstring()));
+  const std::wstring message =
+      std::wstring(L"pattern-file-loaded:") + name + L"\n" + wideContents;
+  return m_webView->PostWebMessageAsString(message.c_str());
 }
 
 HRESULT StrudelEditorView::setWebViewBackgroundAlpha(BYTE alpha) {

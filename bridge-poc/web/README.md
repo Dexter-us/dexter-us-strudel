@@ -72,9 +72,19 @@ DexterUSStrudel.vst3/
     └── Samples/
 ```
 
+The Files toolbar menu opens and saves the current pattern as `.strudel` files;
+its Windows dialogs start in `UserData/Presets`. Loading a file replaces the
+editor text but does not start playback. **Run / Update** evaluates it on the
+existing Strudel scheduler when playback is active, without stopping and
+restarting the clock. **Stop** remains a separate action and fades the master
+output down; starting from stopped fades it back up.
+
 The Settings popover can open this folder and save the active Prebake directly
 to `UserData/Prebake/prebake.strudel`; no browser download is needed. That
 portable Prebake is loaded before the bundled default on the next editor open.
+Load Prebake starts its native file picker in `UserData/Prebake`. Reset to
+packaged default removes the portable override and visibly restores the bundled
+helper text; reopen the editor to apply the reset.
 The `UserData/Samples` folder is auto-discovered for sample libraries. If the
 VST3 is installed in a protected, unwritable location, the plugin reports and
 uses a per-user `%LOCALAPPDATA%` fallback instead.

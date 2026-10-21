@@ -10,6 +10,7 @@ import "./style.css";
 const status = document.querySelector("#bridge-status");
 const connectButton = document.querySelector("#connect-bridge");
 const runButton = document.querySelector("#run-strudel");
+const stopButton = document.querySelector("#stop-strudel");
 const drumBuilderToggle = document.querySelector("#drum-builder-toggle");
 const drumBuilderPanel = document.querySelector("#drum-builder-panel");
 const drumTabToggle = document.querySelector("#drum-tab-toggle");
@@ -26,6 +27,11 @@ const drumGrooveMenu = document.querySelector("#drum-groove-menu");
 const settingsToggle = document.querySelector("#settings-toggle");
 const settingsPanel = document.querySelector("#settings-panel");
 const settingsClose = document.querySelector("#settings-close");
+const fileToggle = document.querySelector("#file-toggle");
+const filePanel = document.querySelector("#file-panel");
+const fileClose = document.querySelector("#file-close");
+const fileStatus = document.querySelector("#file-status");
+const fileFolderStatus = document.querySelector("#file-folder-status");
 const themeSelect = document.querySelector("#setting-theme");
 const fontSizeInput = document.querySelector("#setting-font-size");
 const fontSizeOutput = document.querySelector("#setting-font-size-value");
@@ -33,7 +39,6 @@ const opacityInput = document.querySelector("#setting-opacity");
 const opacityOutput = document.querySelector("#setting-opacity-value");
 const opacityStatus = document.querySelector("#opacity-status");
 const prebakeSource = document.querySelector("#prebake-source");
-const prebakeImportFile = document.querySelector("#prebake-import-file");
 const prebakeStatus = document.querySelector("#prebake-status");
 const portableDataStatus = document.querySelector("#portable-data-status");
 const openPortableDataButton = document.querySelector("#portable-data-open");
@@ -95,13 +100,17 @@ const drumGrooves = {
 let selectedDrumGroove = "fourOnFloor";
 
 let bridgeNode = null;
+let pluginAudioContext = null;
+let pluginAudioOutput = null;
 let lastWriteFrame = 0;
 let strudelMounted = false;
 let strudelEditor = null;
 let strudelRunning = false;
 let userChangedEditor = false;
 let localSampleBankIds = [];
+let transportTransitioning = false;
 const localCodeKey = "dexter-us-strudel-editor-code-v1";
+const transportFadeSeconds = 0.18;
 
 function readLocalEditorCode() {
   try {
@@ -160,6 +169,29 @@ function showStatus(message, isError = false) {
 
 function getWebViewBridge() {
   return window.chrome?.webview ?? null;
+}
+
+function setPluginOutputGain(value) {
+  const gain = pluginAudioOutput?.destinationGain?.gain;
+  if (!gain || !pluginAudioContext) return false;
+  const now = pluginAudioContext.currentTime;
+  gain.cancelScheduledValues(now);
+  gain.setValueAtTime(value, now);
+  return true;
+}
+
+async function fadePluginOutputTo(value) {
+  const gain = pluginAudioOutput?.destinationGain?.gain;
+  if (!gain || !pluginAudioContext) return false;
+  const now = pluginAudioContext.currentTime;
+  const current = gain.value;
+  gain.cancelScheduledValues(now);
+  gain.setValueAtTime(current, now);
+  gain.linearRampToValueAtTime(value, now + transportFadeSeconds);
+  await new Promise((resolve) =>
+    window.setTimeout(resolve, transportFadeSeconds * 1000 + 25),
+  );
+  return true;
 }
 
 function readSavedOpacity() {
@@ -243,9 +275,21 @@ function refreshPrebakeEditor() {
   if (window.__dexterStrudelPrebakeError) {
     prebakeStatus.textContent =
       `Prebake has an error: ${window.__dexterStrudelPrebakeError}`;
+  } else if (window.__dexterStrudelPrebakeSourceKind === "portable") {
+    prebakeStatus.textContent =
+      "Active source: UserData/Prebake/prebake.strudel. Changes take effect after reopening the editor.";
+  } else if (window.__dexterStrudelPrebakeSourceKind === "profile") {
+    prebakeStatus.textContent =
+      "Active source: an older WebView profile save. Save Prebake helpers to move it into the portable folder.";
+  } else if (window.__dexterStrudelPrebakeSourceKind === "pending-portable") {
+    prebakeStatus.textContent =
+      "Portable helper file saved. Reopen the editor to use it.";
+  } else if (window.__dexterStrudelPrebakeSourceKind === "imported") {
+    prebakeStatus.textContent =
+      "Imported helper text is pending. Save Prebake helpers, then reopen the editor to use it.";
   } else {
     prebakeStatus.textContent =
-      "Loaded at startup. Save changes to the portable Prebake folder to carry them with the VST3.";
+      "Active source: the packaged default. Save Prebake helpers to replace it with your portable version.";
   }
 }
 
@@ -271,6 +315,20 @@ async function mountStrudel() {
 
     const editor = document.createElement("strudel-editor");
     editor.setAttribute("code", initialEditorCode ?? starterCode);
+    editor.addEventListener("update", (event) => {
+      const state = event.detail ?? {};
+      if (typeof state.started === "boolean") {
+        strudelRunning = state.started;
+        stopButton.disabled = !state.started || transportTransitioning;
+        runButton.textContent = state.started ? "Update live" : "Run / Update";
+      }
+      if (state.evalError && !state.pending) {
+        showStatus(
+          `Code error${state.started ? " — current pattern keeps playing" : ""}: ${state.evalError.message ?? state.evalError}`,
+          true,
+        );
+      }
+    });
     editorMount.replaceChildren(editor);
     strudelEditor = editor;
 
@@ -294,7 +352,9 @@ async function mountStrudel() {
     }
     contentDOM.addEventListener("input", persistEditorCode);
     runButton.disabled = false;
-    showStatus("Editor ready — press Run to start the pattern");
+    stopButton.disabled = !strudelRunning;
+    runButton.textContent = strudelRunning ? "Update live" : "Run / Update";
+    showStatus("Ready — Run fades in, Update stays live, Stop fades out");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const failure = document.createElement("pre");
@@ -302,6 +362,7 @@ async function mountStrudel() {
     failure.textContent = `Strudel editor failed to start:\n${message}`;
     editorMount.replaceChildren(failure);
     runButton.disabled = true;
+    stopButton.disabled = true;
     showStatus("Strudel editor failed to start", true);
     console.error("Strudel editor startup failed", error);
   }
@@ -610,6 +671,10 @@ settingsToggle.addEventListener("click", () => {
   settingsPanel.hidden = !isOpen;
   settingsToggle.setAttribute("aria-expanded", String(isOpen));
   if (isOpen) {
+    filePanel.hidden = true;
+    fileToggle.setAttribute("aria-expanded", "false");
+  }
+  if (isOpen) {
     populateEditorSettings();
     refreshPrebakeEditor();
   }
@@ -619,6 +684,55 @@ settingsClose.addEventListener("click", () => {
   settingsPanel.hidden = true;
   settingsToggle.setAttribute("aria-expanded", "false");
   settingsToggle.focus();
+});
+
+fileToggle.addEventListener("click", () => {
+  const isOpen = filePanel.hidden;
+  filePanel.hidden = !isOpen;
+  fileToggle.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) {
+    settingsPanel.hidden = true;
+    settingsToggle.setAttribute("aria-expanded", "false");
+  }
+});
+
+fileClose.addEventListener("click", () => {
+  filePanel.hidden = true;
+  fileToggle.setAttribute("aria-expanded", "false");
+  fileToggle.focus();
+});
+
+document.querySelector("#load-pattern-file").addEventListener("click", () => {
+  const native = getWebViewBridge();
+  if (!native || !strudelMounted) {
+    fileStatus.textContent =
+      "Connect the audio bridge first; then load a file from the portable Presets folder.";
+    return;
+  }
+  fileStatus.textContent = "Choose a .strudel file from the Presets folder.";
+  native.postMessage("load-pattern-file");
+});
+
+document.querySelector("#save-pattern-file").addEventListener("click", () => {
+  const native = getWebViewBridge();
+  const code = strudelEditor?.editor?.code;
+  if (!native || !strudelMounted || typeof code !== "string") {
+    fileStatus.textContent =
+      "Connect the VST3 audio bridge before saving the current pattern.";
+    return;
+  }
+  fileStatus.textContent = "Choose a name in the portable Presets folder.";
+  native.postMessage(`save-pattern-file:${code}`);
+});
+
+document.querySelector("#file-open-data").addEventListener("click", () => {
+  const native = getWebViewBridge();
+  if (!native) {
+    fileStatus.textContent =
+      "Open the VST3 editor to open its portable data folder.";
+    return;
+  }
+  native.postMessage("open-portable-data-folder");
 });
 
 themeSelect.addEventListener("change", () => {
@@ -646,21 +760,15 @@ opacityInput.addEventListener("change", () =>
 );
 
 document.querySelector("#prebake-import").addEventListener("click", () => {
-  prebakeImportFile.click();
-});
-
-prebakeImportFile.addEventListener("change", async () => {
-  const file = prebakeImportFile.files?.[0];
-  if (!file) return;
-  try {
-    prebakeSource.value = await file.text();
+  const native = getWebViewBridge();
+  if (!native) {
     prebakeStatus.textContent =
-      `Imported ${file.name}. Save it to the portable Prebake folder to use it with this VST3.`;
-  } catch (error) {
-    prebakeStatus.textContent =
-      error instanceof Error ? error.message : "Could not read that file.";
+      "Open the VST3 editor to load a file into the portable Prebake.";
+    return;
   }
-  prebakeImportFile.value = "";
+  prebakeStatus.textContent =
+    "Choose a .strudel helper file; the dialog starts in UserData/Prebake.";
+  native.postMessage("choose-prebake-file");
 });
 
 document.querySelector("#prebake-save").addEventListener("click", () => {
@@ -675,17 +783,24 @@ document.querySelector("#prebake-save").addEventListener("click", () => {
   } catch {
     // The portable VST3 file remains the durable copy.
   }
+  window.__dexterStrudelPrebakeSource = prebakeSource.value;
+  window.__dexterStrudelPrebakeSourceKind = "pending-portable";
   native.postMessage(`save-portable-prebake:${prebakeSource.value}`);
-  prebakeStatus.textContent = "Saving to the portable Prebake folder…";
+  prebakeStatus.textContent =
+    "Saving helper code to UserData/Prebake/prebake.strudel…";
 });
 
 document.querySelector("#prebake-reset").addEventListener("click", async () => {
   try {
     window.localStorage.removeItem(prebakeStorageKey);
     getWebViewBridge()?.postMessage("reset-portable-prebake");
-    prebakeSource.value = await readBundledPrebake();
+    const packagedSource = await readBundledPrebake();
+    prebakeSource.value = packagedSource;
+    window.__dexterStrudelPrebakeSource = packagedSource;
+    window.__dexterStrudelPrebakeSourceKind = "packaged";
+    window.__dexterStrudelPrebakeError = "";
     prebakeStatus.textContent =
-      "Reset requested. The bundled Prebake will load the next time the editor opens.";
+      "Packaged helper code is shown. It will be used after the editor is reopened.";
   } catch (error) {
     prebakeStatus.textContent =
       error instanceof Error ? error.message : "Could not read the bundled file.";
@@ -772,10 +887,23 @@ document.addEventListener("pointerdown", (event) => {
     settingsPanel.hidden = true;
     settingsToggle.setAttribute("aria-expanded", "false");
   }
+  if (
+    !filePanel.hidden &&
+    !filePanel.contains(event.target) &&
+    event.target !== fileToggle
+  ) {
+    filePanel.hidden = true;
+    fileToggle.setAttribute("aria-expanded", "false");
+  }
 });
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    if (!filePanel.hidden) {
+      filePanel.hidden = true;
+      fileToggle.setAttribute("aria-expanded", "false");
+      fileToggle.focus();
+    }
     if (!drumTabPanel.hidden) {
       drumTabPanel.hidden = true;
       drumTabToggle.setAttribute("aria-expanded", "false");
@@ -827,33 +955,75 @@ updateDrumBuilder();
 
 runButton.addEventListener("click", async () => {
   const mirror = strudelEditor?.editor;
+  if (transportTransitioning) return;
   if (!mirror || !strudelMounted) {
     showStatus("Strudel editor is not ready", true);
     return;
   }
 
+  transportTransitioning = true;
+  const wasRunning = Boolean(mirror.repl?.scheduler?.started);
   runButton.disabled = true;
+  stopButton.disabled = true;
   try {
-    if (strudelRunning) {
-      await mirror.stop();
-      strudelRunning = false;
-      runButton.textContent = "Run";
-      showStatus("Pattern stopped");
-    } else {
-      await mirror.evaluate();
-      strudelRunning = true;
-      runButton.textContent = "Stop";
-      showStatus("Pattern running");
+    if (!wasRunning) setPluginOutputGain(0);
+    await mirror.evaluate();
+    const evaluationError = mirror.repl?.state?.evalError;
+    if (evaluationError) throw evaluationError;
+    strudelRunning = Boolean(mirror.repl?.scheduler?.started);
+    runButton.textContent = strudelRunning ? "Update live" : "Run / Update";
+    if (strudelRunning && !wasRunning) {
+      showStatus("Starting — fading in");
+      await fadePluginOutputTo(1);
     }
+    showStatus(wasRunning
+      ? "Pattern updated on the running clock — no stop/restart"
+      : "Pattern running");
   } catch (error) {
-    strudelRunning = false;
-    runButton.textContent = "Run";
+    strudelRunning = Boolean(mirror.repl?.scheduler?.started);
+    runButton.textContent = strudelRunning ? "Update live" : "Run / Update";
     showStatus(
-      error instanceof Error ? `Strudel: ${error.message}` : String(error),
+      `${strudelRunning ? "Current sound keeps playing — " : ""}${error instanceof Error ? `Strudel: ${error.message}` : String(error)}`,
       true,
     );
   } finally {
+    transportTransitioning = false;
     runButton.disabled = false;
+    stopButton.disabled = !Boolean(mirror.repl?.scheduler?.started);
+  }
+});
+
+stopButton.addEventListener("click", async () => {
+  const mirror = strudelEditor?.editor;
+  if (
+    !mirror ||
+    !strudelMounted ||
+    !mirror.repl?.scheduler?.started ||
+    transportTransitioning
+  ) {
+    return;
+  }
+  transportTransitioning = true;
+  runButton.disabled = true;
+  stopButton.disabled = true;
+  try {
+    showStatus("Stopping — fading out");
+    await fadePluginOutputTo(0);
+    await mirror.stop();
+    strudelRunning = false;
+    runButton.textContent = "Run / Update";
+    showStatus("Pattern stopped smoothly");
+  } catch (error) {
+    strudelRunning = Boolean(mirror.repl?.scheduler?.started);
+    if (strudelRunning) await fadePluginOutputTo(1);
+    showStatus(
+      error instanceof Error ? `Could not stop: ${error.message}` : String(error),
+      true,
+    );
+  } finally {
+    transportTransitioning = false;
+    runButton.disabled = false;
+    stopButton.disabled = !Boolean(mirror.repl?.scheduler?.started);
   }
 });
 
@@ -882,6 +1052,7 @@ async function installAudioCapture(buffer, config = {}) {
     );
   }
   setAudioContext(audioContext);
+  pluginAudioContext = audioContext;
 
   await audioContext.audioWorklet.addModule(
     `${import.meta.env.BASE_URL}audio-capture-worklet.js`,
@@ -897,6 +1068,8 @@ async function installAudioCapture(buffer, config = {}) {
 
   const controller = new SuperdoughAudioController(audioContext);
   const output = controller.output;
+  pluginAudioOutput = output;
+  output.destinationGain.gain.setValueAtTime(1, audioContext.currentTime);
   output.destinationGain.disconnect();
   output.destinationGain.connect(bridgeNode);
 
@@ -962,30 +1135,68 @@ if (webview) {
       portableDataStatus.textContent = event.data.portable
         ? `Portable folder beside the VST3: ${folder}`
         : `Per-user fallback (not portable): ${folder}`;
+      fileFolderStatus.textContent = event.data.portable
+        ? `Portable files: ${folder}\\Presets`
+        : `Not portable — per-user files: ${folder}\\Presets`;
       return;
     }
     if (event.data?.type === "portable-prebake-save-result") {
       prebakeStatus.textContent = event.data.success
-        ? `Saved to ${portableDataLocationLabel}\\Prebake\\prebake.strudel. Reopen the editor to load changes.`
+        ? `Saved helper code to ${portableDataLocationLabel}\\Prebake\\prebake.strudel. Reopen the editor to load it.`
         : `Could not save to ${portableDataLocationLabel}. Check that the folder is writable.`;
       return;
     }
     if (event.data?.type === "portable-prebake-reset-result") {
-      if (!event.data.success) {
-        prebakeStatus.textContent =
-          "Could not remove the portable override; the bundled file may not be used next time.";
-      }
+      prebakeStatus.textContent = event.data.success
+        ? "Reset complete. The packaged Prebake will load the next time the editor opens."
+        : "Could not remove the portable override; the packaged default may not load next time.";
+      return;
+    }
+    if (event.data?.type === "portable-prebake-import-error") {
+      prebakeStatus.textContent =
+        event.data.message ?? "Could not load that Prebake file.";
+      return;
+    }
+    if (event.data?.type === "pattern-file-saved") {
+      fileStatus.textContent =
+        `Saved ${event.data.name} in the selected folder.`;
+      return;
+    }
+    if (event.data?.type === "pattern-file-error") {
+      fileStatus.textContent = event.data.message ?? "Pattern file operation failed.";
       return;
     }
     if (event.data?.type === "portable-data-folder-opened") {
+      fileStatus.textContent = event.data.success
+        ? `Opened portable data folder: ${portableDataLocationLabel}`
+        : `Could not open: ${portableDataLocationLabel}`;
       portableDataStatus.textContent = event.data.success
         ? `Opened: ${portableDataLocationLabel}`
         : `Could not open: ${portableDataLocationLabel}`;
       return;
     }
     if (typeof event.data === "string") {
+      if (event.data === "pattern-file-cancelled") {
+        fileStatus.textContent = "No file selected.";
+        return;
+      }
+      if (event.data === "portable-prebake-cancelled") {
+        prebakeStatus.textContent = "No Prebake file selected.";
+        return;
+      }
       if (event.data === "portable-prebake-missing") {
         finishPortablePrebake(null);
+        return;
+      }
+      if (event.data.startsWith("portable-prebake-imported:")) {
+        prebakeSource.value = event.data.slice(
+          "portable-prebake-imported:".length,
+        );
+        window.__dexterStrudelPrebakeSource = prebakeSource.value;
+        window.__dexterStrudelPrebakeSourceKind = "imported";
+        window.__dexterStrudelPrebakeError = "";
+        prebakeStatus.textContent =
+          "Loaded into the helper editor. Save Prebake helpers, then reopen the editor to apply it.";
         return;
       }
       if (event.data.startsWith("portable-prebake-content:")) {
@@ -999,6 +1210,26 @@ if (webview) {
           "portable-prebake-error:".length,
         );
         finishPortablePrebake(null);
+        return;
+      }
+      if (event.data.startsWith("pattern-file-loaded:")) {
+        const payload = event.data.slice("pattern-file-loaded:".length);
+        const separator = payload.indexOf("\n");
+        if (separator < 0) {
+          fileStatus.textContent = "The selected pattern file was malformed.";
+          return;
+        }
+        const name = payload.slice(0, separator);
+        const code = payload.slice(separator + 1);
+        if (!strudelEditor || !strudelMounted) {
+          fileStatus.textContent =
+            "Pattern loaded, but the Strudel editor is not ready yet.";
+          return;
+        }
+        strudelEditor.setAttribute("code", code);
+        saveEditorCode(code);
+        fileStatus.textContent =
+          `Loaded ${name}. Press Update live to change the sound without stopping.`;
         return;
       }
     }
