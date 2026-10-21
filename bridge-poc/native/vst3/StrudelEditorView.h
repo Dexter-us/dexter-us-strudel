@@ -1,11 +1,15 @@
 #pragma once
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#include <wrl.h>
+#include <WebView2.h>
+
 #include "SharedAudioRingBuffer.hpp"
 
 #include "public.sdk/source/common/pluginview.h"
-
-#include <WebView2.h>
-#include <wrl.h>
 
 #include <atomic>
 
