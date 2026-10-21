@@ -36,6 +36,9 @@ processor component-state interface and the edit-controller state interface.
 CodeMirror changes are sent to the native component, and restored code is
 returned to the WebView before the editor mounts. This makes the pattern travel
 with host-saved VST3 state, where supported by the host's bank/project save.
+The editor also writes code to the persistent WebView2 profile on each edit, so
+closing and reopening the editor window in the same instance does not depend on
+the host saving a bank.
 
 The standard Strudel sample maps are loaded from their upstream repositories at
 startup; individual audio samples are fetched on demand. Persistent sample

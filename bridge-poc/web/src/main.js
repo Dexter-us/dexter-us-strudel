@@ -19,11 +19,30 @@ let lastWriteFrame = 0;
 let strudelMounted = false;
 let strudelEditor = null;
 let strudelRunning = false;
-let initialEditorCode = null;
-let resolveInitialEditorCode;
-let saveCodeTimer = 0;
-const initialEditorCodeReady = new Promise((resolve) => {
-  resolveInitialEditorCode = resolve;
+let userChangedEditor = false;
+const localCodeKey = "dexter-us-strudel-editor-code-v1";
+
+function readLocalEditorCode() {
+  try {
+    return window.localStorage.getItem(localCodeKey);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalEditorCode(code) {
+  try {
+    window.localStorage.setItem(localCodeKey, code);
+  } catch {
+    // VST3 component state remains available if browser storage is disabled.
+  }
+}
+
+let initialEditorCode = readLocalEditorCode();
+let runtimeLoadError = null;
+const strudelRuntimeReady = import("@strudel/repl").catch((error) => {
+  runtimeLoadError = error;
+  return null;
 });
 
 versionLabel.textContent = `v${appVersion}`;
@@ -44,12 +63,6 @@ function getWebViewBridge() {
 
 async function mountStrudel() {
   if (strudelMounted) return;
-  if (initialEditorCode === null) {
-    await Promise.race([
-      initialEditorCodeReady,
-      new Promise((resolve) => setTimeout(resolve, 1000)),
-    ]);
-  }
   editorMount.inert = false;
   editorMount.replaceChildren();
   const loading = document.createElement("div");
@@ -58,7 +71,10 @@ async function mountStrudel() {
   editorMount.append(loading);
 
   try {
-    await import("@strudel/repl");
+    await strudelRuntimeReady;
+    if (runtimeLoadError) {
+      throw runtimeLoadError;
+    }
     if (!customElements.get("strudel-editor")) {
       throw new Error("Strudel's editor component was not registered");
     }
@@ -79,7 +95,11 @@ async function mountStrudel() {
     }
 
     strudelMounted = true;
-    editorMount.addEventListener("input", persistEditorCode);
+    const contentDOM = editor.editor.editor?.contentDOM;
+    if (!contentDOM) {
+      throw new Error("Strudel's CodeMirror input surface was not available");
+    }
+    contentDOM.addEventListener("input", persistEditorCode);
     runButton.disabled = false;
     showStatus("Editor ready — press Run to start the pattern");
   } catch (error) {
@@ -95,13 +115,12 @@ async function mountStrudel() {
 }
 
 function persistEditorCode() {
-  clearTimeout(saveCodeTimer);
-  saveCodeTimer = window.setTimeout(() => {
-    const code = strudelEditor?.editor?.code;
-    if (typeof code === "string") {
-      getWebViewBridge()?.postMessage(`editor-code:${code}`);
-    }
-  }, 100);
+  const code = strudelEditor?.editor?.code;
+  if (typeof code !== "string") return;
+  userChangedEditor = true;
+  initialEditorCode = code;
+  writeLocalEditorCode(code);
+  getWebViewBridge()?.postMessage(`editor-code:${code}`);
 }
 
 runButton.addEventListener("click", async () => {
@@ -239,8 +258,19 @@ if (webview) {
       typeof event.data === "string" &&
       event.data.startsWith("editor-code-state:")
     ) {
-      initialEditorCode = event.data.slice("editor-code-state:".length);
-      resolveInitialEditorCode?.();
+      const componentCode = event.data.slice("editor-code-state:".length);
+      const restoredCode =
+        componentCode.length > 0 ? componentCode : readLocalEditorCode();
+      if (!userChangedEditor && restoredCode !== null) {
+        initialEditorCode = restoredCode;
+        writeLocalEditorCode(restoredCode);
+        if (
+          strudelMounted &&
+          strudelEditor?.editor?.code !== restoredCode
+        ) {
+          strudelEditor.setAttribute("code", restoredCode);
+        }
+      }
       return;
     }
   });

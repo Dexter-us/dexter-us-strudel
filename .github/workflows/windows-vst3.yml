@@ -33,7 +33,7 @@ jobs:
         run: cmake -S bridge-poc/native/vst3 -B build -G "Visual Studio 18 2026" -A x64
 
       - name: Build VST3
-        run: cmake --build build --config Release --target DexterUSStrudel
+        run: cmake --build build --config Release --target DexterUSStrudel --parallel
 
       - name: Run ring-buffer tests
         run: |
@@ -43,6 +43,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DexterUSStrudel-v0.2.1-VST3
+          name: DexterUSStrudel-v0.2.2-VST3
           path: build/VST3/Release/DexterUSStrudel.vst3
           if-no-files-found: error
