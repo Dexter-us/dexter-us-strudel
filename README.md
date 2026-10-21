@@ -16,16 +16,22 @@ This audio bridge is a feasibility milestone, not yet proven. Measure latency, u
 
 ## Upstream and licensing
 
-Strudel's current source is maintained at [Codeberg](https://codeberg.org/uzu/strudel) and declares **AGPL-3.0-or-later**. Review license compatibility before vendoring, modifying, or distributing the runtime with this plugin. The upstream source has not yet been copied into this repository.
+Strudel's current source is maintained at [Codeberg](https://codeberg.org/uzu/strudel) and declares **AGPL-3.0-or-later**. This repository pins the upstream source as a Git submodule at e00b6f621655d30bc5f9a3aff0d36b11e2af3f52. Review license compatibility before distributing the runtime with this plugin.
+
+Initialize the source after cloning:
+
+```sh
+git submodule update --init --recursive
+```
 
 ## Milestones
 
-1. Pin and build the complete upstream Strudel runtime locally in WebView2.
+1. Build the pinned complete Strudel runtime locally for WebView2.
 2. Prove a Web Audio-to-native audio bridge with a standalone Windows harness.
-3. Integrate the bridge into VST3 processing and confirm the plugin outputs reach a downstream DAW effect.
+3. Integrate the bridge into VST3 processing and confirm plugin output reaches a downstream DAW effect.
 4. Add egui controls beside the Strudel WebView; validate resize, focus/input, and teardown.
 5. Test full packaging and behavior in a Windows DAW.
 
 ## Status
 
-Architecture brief only. No Strudel source, audio bridge, plugin implementation, or DAW validation is present yet.
+The Strudel source is pinned as a submodule. The audio bridge, plugin implementation, and DAW validation are not present yet.
