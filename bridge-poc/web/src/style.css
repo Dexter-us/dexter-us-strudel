@@ -40,6 +40,14 @@ body {
   letter-spacing: 0.04em;
 }
 
+.brand small {
+  color: #8f9581;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin-left: 0.45rem;
+}
+
 .bridge-status {
   color: #b7bbab;
   font-size: 0.78rem;
@@ -89,6 +97,13 @@ main {
   height: 100%;
   justify-items: center;
   min-height: 100%;
+}
+
+.editor-error {
+  color: #ff9b8f;
+  font: 0.85rem/1.5 "Segoe UI", sans-serif;
+  margin: 1.25rem;
+  white-space: pre-wrap;
 }
 
 strudel-editor {

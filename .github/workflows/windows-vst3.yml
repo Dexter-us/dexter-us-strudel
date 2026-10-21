@@ -43,6 +43,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DexterUSStrudel-VST3
+          name: DexterUSStrudel-v0.1.1-VST3
           path: build/VST3/Release/DexterUSStrudel.vst3
           if-no-files-found: error

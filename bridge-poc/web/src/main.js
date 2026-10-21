@@ -3,17 +3,24 @@ import {
   setSuperdoughAudioController,
 } from "@strudel/webaudio";
 import { SuperdoughAudioController } from "superdough/superdoughoutput.mjs";
+import { version as appVersion } from "../package.json";
 import "./style.css";
 
 const status = document.querySelector("#bridge-status");
 const connectButton = document.querySelector("#connect-bridge");
+const runButton = document.querySelector("#run-strudel");
 const audioFormat = document.querySelector("#audio-format");
 const audioFrames = document.querySelector("#audio-frames");
 const editorMount = document.querySelector("#editor-mount");
+const versionLabel = document.querySelector("#app-version");
 
 let bridgeNode = null;
 let lastWriteFrame = 0;
 let strudelMounted = false;
+let strudelEditor = null;
+let strudelRunning = false;
+
+versionLabel.textContent = `v${appVersion}`;
 
 const starterCode = `setcps(0.75)
 note("c3 eb3 g3 bb3").s("triangle")
@@ -31,12 +38,80 @@ function getWebViewBridge() {
 
 async function mountStrudel() {
   if (strudelMounted) return;
-  await import("@strudel/repl");
-  const editor = document.createElement("strudel-editor");
-  editor.setAttribute("code", starterCode);
-  editorMount.replaceChildren(editor);
-  strudelMounted = true;
+  editorMount.inert = false;
+  editorMount.replaceChildren();
+  const loading = document.createElement("div");
+  loading.className = "loading-state";
+  loading.textContent = "Loading Strudel editor…";
+  editorMount.append(loading);
+
+  try {
+    await import("@strudel/repl");
+    if (!customElements.get("strudel-editor")) {
+      throw new Error("Strudel's editor component was not registered");
+    }
+
+    const editor = document.createElement("strudel-editor");
+    editor.setAttribute("code", starterCode);
+    editorMount.replaceChildren(editor);
+    strudelEditor = editor;
+
+    // Strudel creates CodeMirror in a sibling from connectedCallback.
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    if (!editor.editor || !editorMount.querySelector(".cm-editor")) {
+      throw new Error(
+        "Strudel loaded, but CodeMirror did not mount. Reopen the editor and check the WebView2 Runtime.",
+      );
+    }
+
+    strudelMounted = true;
+    runButton.disabled = false;
+    showStatus("Editor ready — press Run to start the pattern");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const failure = document.createElement("pre");
+    failure.className = "editor-error";
+    failure.textContent = `Strudel editor failed to start:\n${message}`;
+    editorMount.replaceChildren(failure);
+    runButton.disabled = true;
+    showStatus("Strudel editor failed to start", true);
+    console.error("Strudel editor startup failed", error);
+  }
 }
+
+runButton.addEventListener("click", async () => {
+  const mirror = strudelEditor?.editor;
+  if (!mirror || !strudelMounted) {
+    showStatus("Strudel editor is not ready", true);
+    return;
+  }
+
+  runButton.disabled = true;
+  try {
+    if (strudelRunning) {
+      await mirror.stop();
+      strudelRunning = false;
+      runButton.textContent = "Run";
+      showStatus("Pattern stopped");
+    } else {
+      await mirror.evaluate();
+      strudelRunning = true;
+      runButton.textContent = "Stop";
+      showStatus("Pattern running");
+    }
+  } catch (error) {
+    strudelRunning = false;
+    runButton.textContent = "Run";
+    showStatus(
+      error instanceof Error ? `Strudel: ${error.message}` : String(error),
+      true,
+    );
+  } finally {
+    runButton.disabled = false;
+  }
+});
 
 async function installAudioCapture(buffer, config = {}) {
   const sampleRate = Number(config.sampleRate ?? 48000);
@@ -99,8 +174,8 @@ async function installAudioCapture(buffer, config = {}) {
       audioFormat.textContent =
         `${data.channels} channels · ${data.sampleRate} Hz · ${data.capacityFrames} frame ring`;
       await mountStrudel();
-      editorMount.inert = false;
-      showStatus("Shared audio buffer connected — use Strudel's play controls");
+      connectButton.textContent = "Audio bridge connected";
+      connectButton.disabled = true;
       return;
     }
     if (data?.type === "audio-ready") {
