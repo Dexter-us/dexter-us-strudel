@@ -5,6 +5,7 @@ import {
 } from "@strudel/webaudio";
 import { SuperdoughAudioController } from "superdough/superdoughoutput.mjs";
 import { version as appVersion } from "../package.json";
+import { loadAkwfManifest } from "./wavetable-bank.js";
 import "./style.css";
 
 const status = document.querySelector("#bridge-status");
@@ -23,6 +24,7 @@ const drumTabInsertButton = document.querySelector("#insert-drum-tab");
 const drumTabCloseButton = document.querySelector("#drum-tab-close");
 const wavetableSoundSelect = document.querySelector("#wavetable-sound");
 const wavetableNoteSelect = document.querySelector("#wavetable-note");
+const wavetableIndexSelect = document.querySelector("#wavetable-index");
 const drumCodePreview = document.querySelector("#drum-code-preview");
 const insertDrumPatternButton = document.querySelector("#insert-drum-pattern");
 const drumGrooveMenu = document.querySelector("#drum-groove-menu");
@@ -525,9 +527,10 @@ function generateDrumTabCode() {
           : `[${Array(count).fill(value).join(" ")}]`;
     if (track.kind === "wavetable") {
       const note = wavetableNoteSelect.value.toLowerCase();
+      const waveformIndex = Number(wavetableIndexSelect.value) || 0;
       const tokens = steps.map((count) => tokenForHit(note, count));
       patterns.push(
-        `  note("${tokens.join(" ")}").s("${wavetableSoundSelect.value}").wt("<0 .25 .5 .75>").gain(0.45)`,
+        `  note("${tokens.join(" ")}").s("${wavetableSoundSelect.value}").n(${waveformIndex}).gain(0.45)`,
       );
     } else {
       const sample = track.sample();
@@ -548,7 +551,7 @@ function updateDrumTabPreview() {
   try {
     drumTabCodePreview.textContent = generateDrumTabCode();
     drumTabStatus.textContent =
-      "x = one hit · 2–8 = ratchets · W uses the selected wavetable and note.";
+      "x = one hit · 2–8 = ratchets · W uses the selected AKWF wave and note.";
     drumTabStatus.style.color = "";
   } catch (error) {
     drumTabCodePreview.textContent = "";
@@ -557,6 +560,43 @@ function updateDrumTabPreview() {
     drumTabStatus.style.color = "#ff9b8f";
   }
 }
+
+let akwfBanks = [];
+
+function populateWavetableIndexes() {
+  const bank = akwfBanks.find(
+    (candidate) => candidate.id === wavetableSoundSelect.value,
+  );
+  if (!bank) return;
+
+  const previousIndex = Number(wavetableIndexSelect.value) || 0;
+  wavetableIndexSelect.replaceChildren(
+    ...bank.files.map((file, index) => {
+      const filename = file.split("/").at(-1).replace(/\.wav$/i, "");
+      return new Option(filename, String(index));
+    }),
+  );
+  wavetableIndexSelect.value = String(
+    Math.min(previousIndex, bank.files.length - 1),
+  );
+}
+
+loadAkwfManifest()
+  .then((manifest) => {
+    akwfBanks = manifest.banks;
+    const preferredBank =
+      akwfBanks.find((bank) => bank.id === wavetableSoundSelect.value) ??
+      akwfBanks[0];
+    wavetableSoundSelect.replaceChildren(
+      ...akwfBanks.map((bank) => new Option(bank.label, bank.id)),
+    );
+    if (preferredBank) wavetableSoundSelect.value = preferredBank.id;
+    populateWavetableIndexes();
+    updateDrumTabPreview();
+  })
+  .catch((error) => {
+    console.warn("The bundled AKWF bank index could not be loaded.", error);
+  });
 
 function updateDrumBuilder() {
   for (const [, input, output] of drumControls) {
@@ -680,8 +720,12 @@ drumTabCloseButton.addEventListener("click", () => {
 });
 
 drumTabSource.addEventListener("input", updateDrumTabPreview);
-wavetableSoundSelect.addEventListener("change", updateDrumTabPreview);
+wavetableSoundSelect.addEventListener("change", () => {
+  populateWavetableIndexes();
+  updateDrumTabPreview();
+});
 wavetableNoteSelect.addEventListener("change", updateDrumTabPreview);
+wavetableIndexSelect.addEventListener("change", updateDrumTabPreview);
 drumTabGenerateButton.addEventListener("click", updateDrumTabPreview);
 drumTabInsertButton.addEventListener("click", () => {
   if (!strudelEditor || !strudelMounted) {

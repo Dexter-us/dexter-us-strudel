@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Dexter U.S. Strudel v0.2.14</title>
+    <title>Dexter U.S. Strudel v0.2.15</title>
   </head>
   <body>
     <header class="toolbar">
@@ -68,17 +68,18 @@ S: ----|1---|----|1---
 H: 1-1-|1-1-|1-1-|1-1-
 O: ----|----|----|---1
 W: 1---|----|--3-|----</pre>
-        <p class="settings-note">K = kick · S = snare · H = closed hat · O = open hat · W = wavetable voice</p>
+        <p class="settings-note">K = kick · S = snare · H = closed hat · O = open hat · W = AKWF voice</p>
         <div class="wavetable-controls">
           <label class="settings-field" for="wavetable-sound">
-            <span>Wavetable</span>
+            <span>AKWF category</span>
             <select id="wavetable-sound">
-              <option value="dx_saw">Saw — bright, buzzy</option>
-              <option value="dx_square">Square — hollow, reedy</option>
-              <option value="dx_triangle">Triangle — soft, rounded</option>
-              <option value="dx_bright">Bright — sharp harmonics</option>
-              <option value="dx_hollow">Hollow — woody formants</option>
-              <option value="dx_glass">Glass — bell-like</option>
+              <option value="akwf_0001">AKWF 0001</option>
+            </select>
+          </label>
+          <label class="settings-field" for="wavetable-index">
+            <span>Waveform</span>
+            <select id="wavetable-index" aria-label="AKWF waveform">
+              <option value="0">AKWF 0001</option>
             </select>
           </label>
           <label class="settings-field" for="wavetable-note">

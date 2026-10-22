@@ -100,16 +100,19 @@ editor to choose one of three grooves or open the custom drum-tab editor. The
 tab editor accepts 16-step K (kick), S (snare), H (closed hat), O (open hat),
 and W (wavetable voice) rows. Use `x` for a single hit, `2`–`8` for that many
 ratcheted hits in one step, `-`/`.` for rests, and `|` as a visual bar separator.
-It validates the rows and generates Strudel `stack()` code. The wavetable row
-uses the selected pitch/table and animates its position with `wt()`.
+It validates the rows and generates Strudel `stack()` code. The W row uses the
+selected AKWF category, waveform, and note.
 
-Six small procedural wavetables are generated locally during the web build and
-packaged with the VST3, so playback does not need an online table library. The
-generated waveform data is dedicated under CC0 1.0 (see
-`public/wavetables/LICENSE.txt`); the Strudel/SuperDough runtime remains
-AGPL-3.0-or-later. The builder's cycle speed and level sliders still generate
-named numeric constants. Insert/Update replaces the editor contents; playback
-starts only when Run is pressed.
+The W row uses the AKWF single-cycle WAV collection. The build fetches only the
+WAV directory from a pinned AKWF-FREE source revision, includes its CC0 license,
+and packages the waveforms with the VST3. That fetch happens during development
+or CI builds only; the installed plugin reads the packaged files locally and
+does not need an internet connection to play them. The upstream WAV directory
+currently contains about 4,350 source files and is only a few megabytes. Stereo
+source files are split into left and right waveform entries. The
+Strudel/SuperDough runtime remains AGPL-3.0-or-later. The builder's cycle speed
+and level sliders still generate named numeric constants. Insert/Update
+replaces the editor contents; playback starts only when Run is pressed.
 
 The Settings popover exposes CodeMirror editor options, theme and font size,
 plus a WebView background opacity slider. It changes the native WebView

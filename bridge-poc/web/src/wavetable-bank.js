@@ -1,17 +1,26 @@
-export const BUILT_IN_WAVETABLES = [
-  { id: "dx_saw", label: "Saw — bright, buzzy" },
-  { id: "dx_square", label: "Square — hollow, reedy" },
-  { id: "dx_triangle", label: "Triangle — soft, rounded" },
-  { id: "dx_bright", label: "Bright — sharp harmonics" },
-  { id: "dx_hollow", label: "Hollow — woody formants" },
-  { id: "dx_glass", label: "Glass — bell-like" },
-];
+let manifestPromise;
 
-const frameLength = 2048;
-
-export function registerBuiltInWavetables(registerWaveTable) {
-  for (const { id } of BUILT_IN_WAVETABLES) {
-    const url = new URL(`/wavetables/${id}.wav`, window.location.href).href;
-    registerWaveTable(id, [url], { frameLen: frameLength });
+export function loadAkwfManifest() {
+  if (!manifestPromise) {
+    const url = new URL("/wavetables/manifest.json", window.location.href);
+    manifestPromise = fetch(url, { cache: "force-cache" }).then((response) => {
+      if (!response.ok) {
+        throw new Error(`Could not load the bundled AKWF index (${response.status}).`);
+      }
+      return response.json();
+    });
   }
+  return manifestPromise;
+}
+
+export async function registerBuiltInWavetables(registerWaveTable) {
+  const manifest = await loadAkwfManifest();
+  const frameLength = manifest.frameLength || 600;
+  for (const bank of manifest.banks) {
+    const urls = bank.files.map((file) =>
+      new URL(file, window.location.href).href,
+    );
+    registerWaveTable(bank.id, urls, { frameLen: frameLength });
+  }
+  return manifest;
 }

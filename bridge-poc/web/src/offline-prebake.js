@@ -85,7 +85,7 @@ export async function prebake() {
     registerSynthSounds(),
     registerZZFXSounds(),
   ]);
-  registerBuiltInWavetables(registerWaveTable);
+  await registerBuiltInWavetables(registerWaveTable);
 
   const userSource = await loadUserPrebake();
   executeUserPrebake(userSource);
