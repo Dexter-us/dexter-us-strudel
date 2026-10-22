@@ -255,6 +255,16 @@ strudel-editor + div .cm-editor {
   width: 100%;
 }
 
+.wavetable-controls {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: minmax(0, 1.6fr) minmax(6rem, 0.8fr);
+}
+
+.wavetable-controls label {
+  min-width: 0;
+}
+
 .context-menu {
   background: #1a1c17;
   border: 1px solid #4b5040;

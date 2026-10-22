@@ -21,6 +21,8 @@ const drumTabCodePreview = document.querySelector("#drum-tab-code-preview");
 const drumTabGenerateButton = document.querySelector("#generate-drum-tab");
 const drumTabInsertButton = document.querySelector("#insert-drum-tab");
 const drumTabCloseButton = document.querySelector("#drum-tab-close");
+const wavetableSoundSelect = document.querySelector("#wavetable-sound");
+const wavetableNoteSelect = document.querySelector("#wavetable-note");
 const drumCodePreview = document.querySelector("#drum-code-preview");
 const insertDrumPatternButton = document.querySelector("#insert-drum-pattern");
 const drumGrooveMenu = document.querySelector("#drum-groove-menu");
@@ -429,25 +431,34 @@ const drumTabTracks = [
   {
     key: "k",
     aliases: ["k", "kick"],
+    kind: "sample",
     sample: () =>
       findLocalDrumBank(["bd", "kick", "kickdrum", "bassdrum"], "bd"),
   },
   {
     key: "s",
     aliases: ["s", "sn", "snare"],
+    kind: "sample",
     sample: () =>
       findLocalDrumBank(["sd", "sn", "snare", "snaredrum"], "sd"),
   },
   {
     key: "h",
     aliases: ["h", "hh", "hat", "hihat", "closedhat"],
+    kind: "sample",
     sample: () =>
       findLocalDrumBank(["hh", "ch", "closedhat", "hihat", "hat"], "hh"),
   },
   {
     key: "o",
     aliases: ["o", "oh", "openhat"],
+    kind: "sample",
     sample: () => findLocalDrumBank(["oh", "openhat"], "oh"),
+  },
+  {
+    key: "w",
+    aliases: ["w", "wt", "wave", "wavetable", "tone"],
+    kind: "wavetable",
   },
 ];
 
@@ -459,7 +470,7 @@ function parseDrumTab(source) {
     const match = line.match(/^([a-z]+)\s*:\s*(.*)$/i);
     if (!match) {
       throw new Error(
-        `Line ${lineIndex + 1}: use a track label and colon, e.g. K: x---.`,
+        `Line ${lineIndex + 1}: use a track label and colon, e.g. K: 1---.`,
       );
     }
     const label = match[1].toLowerCase();
@@ -468,7 +479,7 @@ function parseDrumTab(source) {
     );
     if (!track) {
       throw new Error(
-        `Line ${lineIndex + 1}: unknown track “${match[1]}”. Use K, S, H, or O.`,
+        `Line ${lineIndex + 1}: unknown track “${match[1]}”. Use K, S, H, O, or W.`,
       );
     }
     if (rows.has(track.key)) {
@@ -477,9 +488,9 @@ function parseDrumTab(source) {
       );
     }
     const steps = match[2].replace(/[|\s]/g, "");
-    if (!/^[xXoO.\-_]+$/.test(steps)) {
+    if (!/^[xXoO1-8.\-_]+$/.test(steps)) {
       throw new Error(
-        `Line ${lineIndex + 1}: use x/o for hits and - or . for rests.`,
+        `Line ${lineIndex + 1}: use x for one hit, 2–8 for ratchets, and - or . for rests.`,
       );
     }
     if (steps.length !== 16) {
@@ -487,7 +498,14 @@ function parseDrumTab(source) {
         `Line ${lineIndex + 1}: expected 16 steps, found ${steps.length}.`,
       );
     }
-    rows.set(track.key, [...steps].map((step) => /[xXoO]/.test(step)));
+    rows.set(
+      track.key,
+      [...steps].map((step) => {
+        if (/[xXoO]/.test(step)) return 1;
+        if (/[1-8]/.test(step)) return Number(step);
+        return 0;
+      }),
+    );
   }
   if (!rows.size) throw new Error("Enter at least one drum-tab row.");
   return rows;
@@ -498,13 +516,27 @@ function generateDrumTabCode() {
   const patterns = [];
   for (const track of drumTabTracks) {
     const steps = rows.get(track.key);
-    if (!steps?.some(Boolean)) continue;
-    const sample = track.sample();
-    const tokens = steps.map((hit) => (hit ? sample : "~"));
-    patterns.push(`  s("${tokens.join(" ")}")`);
+    if (!steps?.some((count) => count > 0)) continue;
+    const tokenForHit = (value, count) =>
+      count === 0
+        ? "~"
+        : count === 1
+          ? value
+          : `[${Array(count).fill(value).join(" ")}]`;
+    if (track.kind === "wavetable") {
+      const note = wavetableNoteSelect.value.toLowerCase();
+      const tokens = steps.map((count) => tokenForHit(note, count));
+      patterns.push(
+        `  note("${tokens.join(" ")}").s("${wavetableSoundSelect.value}").wt("<0 .25 .5 .75>").gain(0.45)`,
+      );
+    } else {
+      const sample = track.sample();
+      const tokens = steps.map((count) => tokenForHit(sample, count));
+      patterns.push(`  s("${tokens.join(" ")}")`);
+    }
   }
-  if (!patterns.length) throw new Error("Add at least one hit marked x or o.");
-  return `// Generated from the drum tab
+  if (!patterns.length) throw new Error("Add at least one hit or ratchet.");
+  return `// Generated from the drum and wavetable tab
 setcps(0.75)
 
 stack(
@@ -516,7 +548,7 @@ function updateDrumTabPreview() {
   try {
     drumTabCodePreview.textContent = generateDrumTabCode();
     drumTabStatus.textContent =
-      "16 steps per row · use Generate code to refresh the preview.";
+      "x = one hit · 2–8 = ratchets · W uses the selected wavetable and note.";
     drumTabStatus.style.color = "";
   } catch (error) {
     drumTabCodePreview.textContent = "";
@@ -648,6 +680,8 @@ drumTabCloseButton.addEventListener("click", () => {
 });
 
 drumTabSource.addEventListener("input", updateDrumTabPreview);
+wavetableSoundSelect.addEventListener("change", updateDrumTabPreview);
+wavetableNoteSelect.addEventListener("change", updateDrumTabPreview);
 drumTabGenerateButton.addEventListener("click", updateDrumTabPreview);
 drumTabInsertButton.addEventListener("click", () => {
   if (!strudelEditor || !strudelMounted) {

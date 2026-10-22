@@ -97,11 +97,19 @@ sample maps are not initialized at startup.
 The editor includes a floating Drum Builder popover for a kick/snare/hi-hat
 pattern. Left-click the toolbar button to open slider controls; right-click the
 editor to choose one of three grooves or open the custom drum-tab editor. The
-tab editor accepts 16-step K (kick), S (snare), H (closed hat), and O (open hat)
-rows, with `x`/`o` for hits, `-`/`.` for rests, and `|` as a visual bar separator.
-It validates the rows and generates Strudel `stack()` code. The builder's cycle
-speed and level sliders still generate named numeric constants. Insert/Update
-replaces the editor contents; playback still starts only when Run is pressed.
+tab editor accepts 16-step K (kick), S (snare), H (closed hat), O (open hat),
+and W (wavetable voice) rows. Use `x` for a single hit, `2`–`8` for that many
+ratcheted hits in one step, `-`/`.` for rests, and `|` as a visual bar separator.
+It validates the rows and generates Strudel `stack()` code. The wavetable row
+uses the selected pitch/table and animates its position with `wt()`.
+
+Six small procedural wavetables are generated locally during the web build and
+packaged with the VST3, so playback does not need an online table library. The
+generated waveform data is dedicated under CC0 1.0 (see
+`public/wavetables/LICENSE.txt`); the Strudel/SuperDough runtime remains
+AGPL-3.0-or-later. The builder's cycle speed and level sliders still generate
+named numeric constants. Insert/Update replaces the editor contents; playback
+starts only when Run is pressed.
 
 The Settings popover exposes CodeMirror editor options, theme and font size,
 plus a WebView background opacity slider. It changes the native WebView

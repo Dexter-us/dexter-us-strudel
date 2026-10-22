@@ -8,10 +8,12 @@
  */
 import { noteToMidi, valueToMidi, Pattern, evalScope } from "@strudel/core";
 import {
+  registerWaveTable,
   registerSynthSounds,
   registerZZFXSounds,
 } from "@strudel/webaudio";
 import * as core from "@strudel/core";
+import { registerBuiltInWavetables } from "./wavetable-bank.js";
 
 const userPrebakeStorageKey = "dexter-us-strudel-prebake-v1";
 
@@ -83,6 +85,7 @@ export async function prebake() {
     registerSynthSounds(),
     registerZZFXSounds(),
   ]);
+  registerBuiltInWavetables(registerWaveTable);
 
   const userSource = await loadUserPrebake();
   executeUserPrebake(userSource);
